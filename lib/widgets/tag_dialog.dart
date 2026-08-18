@@ -51,24 +51,29 @@ class _TagDialogState extends State<TagDialog> {
 
   Future<void> _addTag() async {
     final ctrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('添加标签'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: '标签名称'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('添加'),
+    final String? name;
+    try {
+      name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('添加标签'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '标签名称'),
           ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('添加'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
+    }
     if (name == null || name.isEmpty) return;
     try {
       final item = await FileTagService.instance.addTag(widget.file.fileId, name);

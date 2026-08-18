@@ -39,28 +39,33 @@ class _OfflinePageState extends ConsumerState<OfflinePage> {
 
   Future<void> _create() async {
     final urlCtrl = TextEditingController();
-    final url = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建离线下载'),
-        content: TextField(
-          controller: urlCtrl,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            labelText: '下载链接',
-            hintText: 'http(s):// 或磁力链接',
+    final String? url;
+    try {
+      url = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('新建离线下载'),
+          content: TextField(
+            controller: urlCtrl,
+            autofocus: true,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              labelText: '下载链接',
+              hintText: 'http(s):// 或磁力链接',
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, urlCtrl.text.trim()),
+              child: const Text('创建'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, urlCtrl.text.trim()),
-            child: const Text('创建'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      urlCtrl.dispose();
+    }
     if (url == null || url.isEmpty) return;
     try {
       await OfflineService.instance.create(url: url);

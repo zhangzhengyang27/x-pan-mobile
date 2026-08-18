@@ -37,8 +37,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     });
     try {
       final results = await FileService.instance.search(keyword: keyword);
+      if (!mounted) return;
       setState(() => _results = results);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);

@@ -38,8 +38,9 @@ class _DedupPageState extends ConsumerState<DedupPage> {
         setState(() {
           _stat = stat;
           _groups = groups;
-          // 默认每组保留第一个
+          // 默认每组保留第一个（空分组跳过，避免 .first 越界）
           for (final g in groups) {
+            if (g.items.isEmpty) continue;
             _keepByGroup.putIfAbsent(g.realFileId, () => g.items.first.fileId);
           }
         });
