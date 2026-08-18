@@ -97,7 +97,7 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   /// 删除文件（fileIds 以 __,__ 分隔）
-  Future<void> delete(String fileIds) async {
+  Future<void> delete(List<String> fileIds) async {
     await _fileService.delete(fileIds);
     await load();
   }
@@ -109,7 +109,7 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   /// 移动
-  Future<void> move(String fileIds, String targetParentId) async {
+  Future<void> move(List<String> fileIds, String targetParentId) async {
     await _fileService.transfer(
       fileIds: fileIds,
       targetParentId: targetParentId,
@@ -118,7 +118,7 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   /// 复制
-  Future<void> copy(String fileIds, String targetParentId) async {
+  Future<void> copy(List<String> fileIds, String targetParentId) async {
     await _fileService.copy(fileIds: fileIds, targetParentId: targetParentId);
     await load();
   }

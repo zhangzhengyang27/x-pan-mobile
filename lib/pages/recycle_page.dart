@@ -42,7 +42,7 @@ class _RecyclePageState extends ConsumerState<RecyclePage> {
 
   Future<void> _restore(FileVO file) async {
     try {
-      await RecycleService.instance.restore(file.fileId);
+      await RecycleService.instance.restore([file.fileId]);
       _toast('已恢复');
       await _load();
     } catch (e) {
@@ -70,7 +70,7 @@ class _RecyclePageState extends ConsumerState<RecyclePage> {
     );
     if (confirm != true) return;
     try {
-      await RecycleService.instance.deleteForever(file.fileId);
+      await RecycleService.instance.deleteForever([file.fileId]);
       _toast('已彻底删除');
       await _load();
     } catch (e) {

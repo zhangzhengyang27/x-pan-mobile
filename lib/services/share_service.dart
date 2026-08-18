@@ -149,7 +149,7 @@ class ShareService {
   /// shareDayType: 0=永久 1=7天 2=30天
   Future<ShareVO> create({
     required String shareName,
-    required String fileIds,
+    required List<String> fileIds,
     int shareType = 1,
     int shareDayType = 0,
     String? shareCode,
@@ -170,8 +170,8 @@ class ShareService {
     );
   }
 
-  /// 取消分享（shareIds 以 __,__ 分隔）
-  Future<dynamic> cancel(String shareIds) {
+  /// 批量取消分享（shareIds 为加密分享ID数组）
+  Future<dynamic> cancel(List<String> shareIds) {
     return _http.request<dynamic>(
       '/share',
       method: 'DELETE',
@@ -238,7 +238,7 @@ class ShareService {
 
   /// 保存分享文件到网盘（需登录 + Share-Token 头）
   Future<dynamic> save({
-    required String fileIds,
+    required List<String> fileIds,
     required String targetParentId,
     required String shareToken,
   }) {

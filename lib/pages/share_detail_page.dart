@@ -130,7 +130,7 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
     );
     if (targetId == null) return;
 
-    final fileIds = files.map((f) => f.fileId).join('__,__');
+    final fileIds = files.map((f) => f.fileId).toList();
     try {
       await ShareService.instance.save(
         fileIds: fileIds,

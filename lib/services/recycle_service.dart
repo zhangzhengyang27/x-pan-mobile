@@ -19,8 +19,8 @@ class RecycleService {
     );
   }
 
-  /// 恢复（fileIds 以 __,__ 分隔）
-  Future<dynamic> restore(String fileIds) {
+  /// 批量还原（fileIds 为加密文件ID数组）
+  Future<dynamic> restore(List<String> fileIds) {
     return _http.request<dynamic>(
       '/recycle/restore',
       method: 'PUT',
@@ -28,8 +28,8 @@ class RecycleService {
     );
   }
 
-  /// 彻底删除（fileIds 以 __,__ 分隔）
-  Future<dynamic> deleteForever(String fileIds) {
+  /// 批量彻底删除（fileIds 为加密文件ID数组）
+  Future<dynamic> deleteForever(List<String> fileIds) {
     return _http.request<dynamic>(
       '/recycle',
       method: 'DELETE',

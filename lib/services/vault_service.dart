@@ -65,8 +65,8 @@ class VaultService {
     );
   }
 
-  /// 移入保险箱（fileIds 逗号分隔）
-  Future<dynamic> move(String fileIds) {
+  /// 批量移入保险箱（fileIds 为加密文件ID数组）
+  Future<dynamic> move(List<String> fileIds) {
     return _http.request<dynamic>(
       '/vault/move',
       method: 'POST',

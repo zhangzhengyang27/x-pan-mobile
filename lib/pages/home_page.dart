@@ -303,7 +303,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
     if (confirm != true) return;
     try {
-      final fileIds = files.map((f) => f.fileId).join('__,__');
+      final fileIds = files.map((f) => f.fileId).toList();
       await ref.read(fileListProvider.notifier).delete(fileIds);
       _toast('已删除');
     } catch (e) {
@@ -323,7 +323,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
     if (targetId == null) return;
     final notifier = ref.read(fileListProvider.notifier);
-    final fileIds = files.map((f) => f.fileId).join('__,__');
+    final fileIds = files.map((f) => f.fileId).toList();
     try {
       if (isCopy) {
         await notifier.copy(fileIds, targetId);
@@ -338,7 +338,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   /// 分享选中文件
   Future<void> _shareFiles(List<FileVO> files) async {
-    final fileIds = files.map((f) => f.fileId).join('__,__');
+    final fileIds = files.map((f) => f.fileId).toList();
     // shareName：单文件用文件名，多文件用 "文件名 等 N 个文件"
     final shareName = files.length == 1
         ? files.first.filename
@@ -589,7 +589,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         _toast('请先到「隐私保险箱」解锁');
         return;
       }
-      final fileIds = files.map((f) => f.fileId).join(',');
+      final fileIds = files.map((f) => f.fileId).toList();
       await VaultService.instance.move(fileIds);
       _toast('已移入保险箱');
       await _refresh();

@@ -191,8 +191,8 @@ class FileService {
     );
   }
 
-  /// 删除（fileIds 以 __,__ 分隔）
-  Future<dynamic> delete(String fileIds) {
+  /// 批量删除（fileIds 为加密文件ID数组）
+  Future<dynamic> delete(List<String> fileIds) {
     return _http.request<dynamic>(
       '/file',
       method: 'DELETE',
@@ -202,7 +202,7 @@ class FileService {
 
   /// 移动
   Future<dynamic> transfer({
-    required String fileIds,
+    required List<String> fileIds,
     required String targetParentId,
   }) {
     return _http.request<dynamic>(
@@ -214,7 +214,7 @@ class FileService {
 
   /// 复制
   Future<dynamic> copy({
-    required String fileIds,
+    required List<String> fileIds,
     required String targetParentId,
   }) {
     return _http.request<dynamic>(

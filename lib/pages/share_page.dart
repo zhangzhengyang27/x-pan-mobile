@@ -59,7 +59,7 @@ class _SharePageState extends ConsumerState<SharePage> {
     );
     if (confirm != true) return;
     try {
-      await ShareService.instance.cancel(share.shareId);
+      await ShareService.instance.cancel([share.shareId]);
       _toast('已取消分享');
       await _load();
     } catch (e) {
