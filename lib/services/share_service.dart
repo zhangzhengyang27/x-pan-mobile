@@ -1,7 +1,7 @@
 import '../core/network/http_client.dart';
 import '../models/file_vo.dart';
 
-/// 将任意 Map 安全转为 Map<String, dynamic>
+/// 将任意 Map 安全转为 `Map<String, dynamic>`
 Map<String, dynamic> _castMap(dynamic json) {
   if (json is Map<String, dynamic>) return json;
   if (json is Map) return json.cast<String, dynamic>();

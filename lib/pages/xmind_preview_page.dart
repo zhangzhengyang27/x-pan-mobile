@@ -114,11 +114,11 @@ class _XmindPreviewPageState extends ConsumerState<XmindPreviewPage> {
     final title = titleRaw is String
         ? titleRaw
         : (titleRaw?['text'] ?? titleRaw?['plain'] ?? '').toString();
-    final id = '${parentPath}/${index}-$title'.substring(
+    final id = '$parentPath/$index-$title'.substring(
       0,
-      '${parentPath}/${index}-$title'.length > 200
+      '$parentPath/$index-$title'.length > 200
           ? 200
-          : '${parentPath}/${index}-$title'.length,
+          : '$parentPath/$index-$title'.length,
     );
 
     final noteRaw = raw['note'];

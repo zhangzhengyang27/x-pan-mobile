@@ -251,6 +251,7 @@ class _AIAssistantPageState extends ConsumerState<AIAssistantPage> {
               final ctrl = TextEditingController(
                 text: await LLMService.instance.getApiKey(),
               );
+              if (!context.mounted) return;
               final key = await showDialog<String>(
                 context: context,
                 builder: (ctx) => AlertDialog(

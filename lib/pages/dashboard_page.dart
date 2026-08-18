@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/file_vo.dart';
+import '../models/user_info.dart';
 import '../providers/auth_provider.dart';
 import '../utils/format.dart';
 
@@ -47,9 +47,9 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildStorageCard(BuildContext context, dynamic user) {
-    final used = (user.usedSize as num).toDouble();
-    final total = (user.totalSize as num).toDouble();
+  Widget _buildStorageCard(BuildContext context, UserInfo user) {
+    final used = user.usedSize.toDouble();
+    final total = user.totalSize.toDouble();
     final ratio = total > 0 ? (used / total).clamp(0.0, 1.0) : 0.0;
     final scheme = Theme.of(context).colorScheme;
 

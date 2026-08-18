@@ -157,7 +157,6 @@ class NotificationManager extends StateNotifier<NotificationState> {
   String _payloadDesc(dynamic payload) {
     if (payload is Map) {
       final filename = payload['filename'] ?? payload['fileName'] ?? '';
-      final status = payload['status'] ?? '';
       final statusText = payload['statusText'] ?? '';
       return [filename.toString(), statusText.toString()]
           .where((s) => s.isNotEmpty)

@@ -447,6 +447,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
 
     if (action == null) return;
+    if (!mounted) return;
     switch (action) {
       case 'download':
         await _download(file);
@@ -494,6 +495,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       _toast('请先在「AI 助手」中配置 DeepSeek API Key');
       return;
     }
+    if (!mounted) return;
     // 显示加载对话框
     showDialog<void>(
       context: context,
@@ -531,6 +533,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       _toast('请先在「AI 助手」中配置 DeepSeek API Key');
       return;
     }
+    if (!mounted) return;
     showDialog<void>(
       context: context,
       barrierDismissible: false,

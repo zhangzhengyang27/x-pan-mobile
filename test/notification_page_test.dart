@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:x_pan_mobile/pages/notification_page.dart';
 import 'package:x_pan_mobile/providers/notification_provider.dart';
-import 'package:x_pan_mobile/services/notification_service.dart';
 
 Widget _wrap(ProviderContainer container) {
   return UncontrolledProviderScope(

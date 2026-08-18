@@ -80,8 +80,6 @@ class NotificationService {
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
 
-  /// 最近一次 token（供自动重连使用，重连时从存储刷新）
-  String _lastToken = '';
   bool _disposed = false;
   bool _connected = false;
   bool get isConnected => _connected;
@@ -109,7 +107,6 @@ class NotificationService {
     if (_disposed) return;
     if (_channel != null && _connected) return;
 
-    _lastToken = token;
     final url = _buildWsUrl(token);
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));

@@ -171,22 +171,31 @@ class _DedupPageState extends ConsumerState<DedupPage> {
         ),
         subtitle: Text('可释放 ${group.releasableBytes > 0 ? _fmtBytes(group.releasableBytes) : group.fileSizeDesc}'),
         children: [
-          for (final item in group.items)
-            RadioListTile<String>(
-              value: item.fileId,
-              groupValue: keepId,
-              title: Text(
-                item.filename,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: const Text('保留此文件，其余删除', style: TextStyle(fontSize: 11)),
-              onChanged: (v) {
-                if (v != null) {
-                  setState(() => _keepByGroup[group.realFileId] = v);
-                }
-              },
+          RadioGroup<String>(
+            groupValue: keepId,
+            onChanged: (v) {
+              if (v != null) {
+                setState(() => _keepByGroup[group.realFileId] = v);
+              }
+            },
+            child: Column(
+              children: [
+                for (final item in group.items)
+                  RadioListTile<String>(
+                    value: item.fileId,
+                    title: Text(
+                      item.filename,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: const Text(
+                      '保留此文件，其余删除',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                  ),
+              ],
             ),
+          ),
         ],
       ),
     );
