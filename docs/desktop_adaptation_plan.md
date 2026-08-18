@@ -287,7 +287,7 @@ dependencies:
 | 1 核心链路 | 通知服务补充 macOS 初始化与权限；`flutter_secure_storage`/`file_picker`/`open_filex` 桌面开箱即用 |
 | 2 预览 | 新增 `pdfx` 依赖；`PdfPreviewView` 组件（macOS `PdfViewPinch`/Windows `PdfView`）；PDF/Office 预览改 pdfx；视频/音频 macOS 正常、Windows 降级为「下载后系统打开」 |
 | 3 响应式 | 新增 `responsive.dart`（`isDesktop`/`ResponsiveContent`）；home 桌面 NavigationRail 侧边栏；14 个二级页面居中限宽 |
-| 4 构建配置 | macOS/Windows 应用名统一 "R Pan"；Windows 窗口标题/产品名/图标描述 |
+| 4 构建配置 | macOS/Windows 应用名统一 "X Pan"；Windows 窗口标题/产品名/图标描述 |
 
 ### 已知限制（按用户决策保留）
 - **Windows 通知**：当前 `flutter_local_notifications` 17.2.4 不支持 Windows（需升级插件到 19.0+ 且要求 Flutter 3.38+），待后续升级 Flutter 后补齐

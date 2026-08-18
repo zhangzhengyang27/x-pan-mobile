@@ -6,7 +6,7 @@
     <!-- 通知振动 -->
     <uses-permission android:name="android.permission.VIBRATE"/>
     <application
-        android:label="R Pan"
+        android:label="X Pan"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

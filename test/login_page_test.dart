@@ -74,7 +74,7 @@ void main() {
     final container = makeContainer();
     await tester.pumpWidget(_wrap(container));
 
-    expect(find.text('R Pan'), findsOneWidget);
+    expect(find.text('X Pan'), findsOneWidget);
     expect(find.text('个人分布式存储'), findsOneWidget);
     expect(find.text('用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);

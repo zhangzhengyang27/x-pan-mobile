@@ -34,7 +34,7 @@ class _XPanAppState extends ConsumerState<XPanApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
-      title: 'R Pan',
+      title: 'X Pan',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

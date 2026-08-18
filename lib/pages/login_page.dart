@@ -64,7 +64,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     Icon(Icons.cloud_outlined, size: 64, color: scheme.primary),
                     const SizedBox(height: 16),
                     Text(
-                      'R Pan',
+                      'X Pan',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             fontWeight: FontWeight.w800,

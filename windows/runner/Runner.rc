@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.xpan" "\0"
-            VALUE "FileDescription", "R Pan 个人分布式存储" "\0"
+            VALUE "FileDescription", "X Pan 个人分布式存储" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "R Pan" "\0"
+            VALUE "InternalName", "X Pan" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.xpan. All rights reserved." "\0"
-            VALUE "OriginalFilename", "R Pan.exe" "\0"
-            VALUE "ProductName", "R Pan" "\0"
+            VALUE "OriginalFilename", "X Pan.exe" "\0"
+            VALUE "ProductName", "X Pan" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
