@@ -25,6 +25,7 @@ import '../services/vault_service.dart';
 import '../utils/format.dart';
 import '../widgets/file_type_icon.dart';
 import '../widgets/folder_picker_dialog.dart';
+import '../widgets/responsive.dart';
 import '../widgets/tag_dialog.dart';
 import 'ai_assistant_page.dart';
 import 'audio_preview_page.dart';
@@ -67,6 +68,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   _ViewMode _viewMode = _ViewMode.list;
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
+  int _desktopNavIndex = 0;
 
   @override
   void initState() {
@@ -758,144 +760,60 @@ class _HomePageState extends ConsumerState<HomePage> {
     final auth = ref.watch(authProvider);
     final fileState = ref.watch(fileListProvider);
     final notifier = ref.read(fileListProvider.notifier);
+    final desktop = isDesktop(context);
 
-    return Scaffold(
-      drawer: Drawer(
-        child: SafeArea(
-          child: Column(
-            children: [
-              UserAccountsDrawerHeader(
-                accountName: Text(auth.user?.username ?? '未登录'),
-                accountEmail: Text(
-                  '已用 ${translateFileSize((auth.user?.usedSize ?? 0).toDouble())} / ${translateFileSize((auth.user?.totalSize ?? 0).toDouble())}',
-                ),
-                currentAccountPicture: CircleAvatar(
-                  child: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('回收站'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const RecyclePage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.share_outlined),
-                title: const Text('我的分享'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const SharePage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.cloud_download_outlined),
-                title: const Text('离线下载'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const OfflinePage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.cloud_upload_outlined),
-                title: const Text('上传任务'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const UploadTaskPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('最近访问'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const RecentPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.star_outline),
-                title: const Text('我的收藏'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const FavoritePage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.security),
-                title: const Text('隐私保险箱'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const VaultPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.cleaning_services_outlined),
-                title: const Text('文件去重'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const DedupPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.dashboard_outlined),
-                title: const Text('存储统计'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const DashboardPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.auto_awesome),
-                title: const Text('AI 助手'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const AIAssistantPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.notifications_outlined),
-                title: const Text('通知中心'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const NotificationPage());
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.settings_outlined),
-                title: const Text('设置'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openPage(const SettingsPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: const Text('退出登录'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // 停止实时通知并断开连接
-                  ref.read(notificationProvider.notifier).stop();
-                  ref.read(authProvider.notifier).logout();
-                },
-              ),
-            ],
+    // 桌面端：侧边导航栏 + 内容区；移动端：抽屉导航
+    final mainBody = Column(
+      children: [
+        _buildBreadcrumbs(notifier),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: _buildBody(fileState),
           ),
         ),
-      ),
-      appBar: _buildAppBar(notifier),
-      body: Column(
-        children: [
-          _buildBreadcrumbs(notifier),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _refresh,
-              child: _buildBody(fileState),
+      ],
+    );
+
+    return Scaffold(
+      drawer: desktop
+          ? null
+          : Drawer(
+              child: SafeArea(
+                child: _buildNavList(auth),
+              ),
             ),
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(notifier),
+      body: desktop
+          ? Row(
+              children: [
+                // 用 SingleChildScrollView 包裹，避免低高度窗口下导航项溢出
+                SingleChildScrollView(
+                  child: NavigationRail(
+                    selectedIndex: _desktopNavIndex,
+                    onDestinationSelected: (i) {
+                      setState(() => _desktopNavIndex = i);
+                      _openDesktopNav(i);
+                    },
+                    labelType: NavigationRailLabelType.all,
+                    leading: Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 8),
+                      child: CircleAvatar(
+                        radius: 20,
+                        child: Icon(
+                          Icons.person,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    destinations: _navDestinations(),
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: mainBody),
+              ],
+            )
+          : mainBody,
       floatingActionButton: _selectionMode
           ? null
           : FloatingActionButton(
@@ -903,6 +821,205 @@ class _HomePageState extends ConsumerState<HomePage> {
               child: const Icon(Icons.add),
             ),
       bottomSheet: _uploading ? _buildUploadBar() : null,
+    );
+  }
+
+  /// 桌面端侧边导航项
+  List<NavigationRailDestination> _navDestinations() {
+    return const [
+      NavigationRailDestination(
+        icon: Icon(Icons.cloud_outlined),
+        selectedIcon: Icon(Icons.cloud),
+        label: Text('我的网盘'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.history),
+        label: Text('最近访问'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.star_outline),
+        selectedIcon: Icon(Icons.star),
+        label: Text('收藏'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.share_outlined),
+        label: Text('分享'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.cloud_download_outlined),
+        label: Text('离线'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.upload_file_outlined),
+        label: Text('上传任务'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.delete_outline),
+        label: Text('回收站'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.security),
+        label: Text('保险箱'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.auto_awesome),
+        label: Text('AI'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.dashboard_outlined),
+        label: Text('统计'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.notifications_outlined),
+        label: Text('通知'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.settings_outlined),
+        label: Text('设置'),
+      ),
+    ];
+  }
+
+  /// 桌面端侧边导航点击分发
+  void _openDesktopNav(int index) {
+    final page = switch (index) {
+      1 => const RecentPage(),
+      2 => const FavoritePage(),
+      3 => const SharePage(),
+      4 => const OfflinePage(),
+      5 => const UploadTaskPage(),
+      6 => const RecyclePage(),
+      7 => const VaultPage(),
+      8 => const AIAssistantPage(),
+      9 => const DashboardPage(),
+      10 => const NotificationPage(),
+      11 => const SettingsPage(),
+      _ => null,
+    };
+    if (page != null) _openPage(page);
+  }
+
+  /// 移动端抽屉导航项（可复用）
+  Widget _buildNavList(dynamic auth) {
+    return Column(
+      children: [
+        UserAccountsDrawerHeader(
+          accountName: Text(auth.user?.username ?? '未登录'),
+          accountEmail: Text(
+            '已用 ${translateFileSize((auth.user?.usedSize ?? 0).toDouble())} / ${translateFileSize((auth.user?.totalSize ?? 0).toDouble())}',
+          ),
+          currentAccountPicture: CircleAvatar(
+            child: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.delete_outline),
+          title: const Text('回收站'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const RecyclePage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.share_outlined),
+          title: const Text('我的分享'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const SharePage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.cloud_download_outlined),
+          title: const Text('离线下载'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const OfflinePage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.cloud_upload_outlined),
+          title: const Text('上传任务'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const UploadTaskPage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.history),
+          title: const Text('最近访问'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const RecentPage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.star_outline),
+          title: const Text('我的收藏'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const FavoritePage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.security),
+          title: const Text('隐私保险箱'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const VaultPage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.cleaning_services_outlined),
+          title: const Text('文件去重'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const DedupPage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.dashboard_outlined),
+          title: const Text('存储统计'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const DashboardPage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.auto_awesome),
+          title: const Text('AI 助手'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const AIAssistantPage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.notifications_outlined),
+          title: const Text('通知中心'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const NotificationPage());
+          },
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.settings_outlined),
+          title: const Text('设置'),
+          onTap: () {
+            Navigator.pop(context);
+            _openPage(const SettingsPage());
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('退出登录'),
+          onTap: () {
+            Navigator.pop(context);
+            // 停止实时通知并断开连接
+            ref.read(notificationProvider.notifier).stop();
+            ref.read(authProvider.notifier).logout();
+          },
+        ),
+      ],
     );
   }
 

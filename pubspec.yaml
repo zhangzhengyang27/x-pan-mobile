@@ -84,6 +84,7 @@ dependencies:
 
   # ─── 安全存储（Token / API Key 加密）────
   flutter_secure_storage: ^9.2.2
+  pdfx: ^2.9.2
 
 dev_dependencies:
   flutter_test:

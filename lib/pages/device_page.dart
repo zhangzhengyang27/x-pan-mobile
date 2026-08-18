@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/device_service.dart';
+import '../widgets/responsive.dart';
 
 /// 设备管理页
 class DevicePage extends ConsumerStatefulWidget {
@@ -74,7 +75,7 @@ class _DevicePageState extends ConsumerState<DevicePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('登录设备')),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

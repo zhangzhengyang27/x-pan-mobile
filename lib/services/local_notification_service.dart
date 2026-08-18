@@ -20,7 +20,9 @@ class LocalNotificationService {
 
     // Android 初始化
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    // iOS 初始化
+    // iOS / macOS 初始化（Darwin 设置共享）
+    // 说明：Windows 通知暂不支持（当前插件 17.2.4 仅支持 macOS/Linux，
+    // Windows 支持需升级到 19.0+ 且要求 Flutter 3.38+，待升级后补齐）。
     const darwinInit = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -30,6 +32,7 @@ class LocalNotificationService {
     const settings = InitializationSettings(
       android: androidInit,
       iOS: darwinInit,
+      macOS: darwinInit,
     );
 
     await _plugin.initialize(settings);
@@ -39,12 +42,20 @@ class LocalNotificationService {
   /// 请求通知权限
   Future<void> requestPermissions() async {
     await init();
+    // iOS / macOS
     await _plugin.resolvePlatformSpecificImplementation<
         IOSFlutterLocalNotificationsPlugin>()?.requestPermissions(
       alert: true,
       badge: true,
       sound: true,
     );
+    await _plugin.resolvePlatformSpecificImplementation<
+        MacOSFlutterLocalNotificationsPlugin>()?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    // Android
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
@@ -59,7 +70,7 @@ class LocalNotificationService {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.areNotificationsEnabled();
     if (android != null) return android;
-    // iOS：权限状态未知时视为已启用
+    // iOS / macOS / 其他：权限状态未知时视为已启用
     return true;
   }
 
@@ -79,12 +90,13 @@ class LocalNotificationService {
       importance: Importance.high,
       priority: Priority.high,
     );
-    // iOS 通知
-    const iosDetails = DarwinNotificationDetails();
+    // iOS / macOS 通知（Darwin 设置共享）
+    const darwinDetails = DarwinNotificationDetails();
 
     const details = NotificationDetails(
       android: androidDetails,
-      iOS: iosDetails,
+      iOS: darwinDetails,
+      macOS: darwinDetails,
     );
 
     await _plugin.show(

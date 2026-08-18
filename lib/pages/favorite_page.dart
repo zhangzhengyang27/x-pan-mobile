@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/favorite_service.dart';
 import '../widgets/file_type_icon.dart';
+import '../widgets/responsive.dart';
 
 /// 收藏（星标）页
 class FavoritePage extends ConsumerStatefulWidget {
@@ -57,7 +58,7 @@ class _FavoritePageState extends ConsumerState<FavoritePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('我的收藏')),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

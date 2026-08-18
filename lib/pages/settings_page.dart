@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/user_service.dart';
+import '../widgets/responsive.dart';
 import 'device_page.dart';
 
 /// 设置页（修改密码 / 设备管理）
@@ -19,30 +20,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final auth = ref.watch(authProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
-      body: ListView(
-        children: [
-          // 账号信息
-          ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.person)),
-            title: Text(auth.user?.username ?? '未登录'),
-            subtitle: Text(auth.user?.email ?? ''),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('修改密码'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _changePassword,
-          ),
-          ListTile(
-            leading: const Icon(Icons.devices),
-            title: const Text('登录设备'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const DevicePage()),
+      body: ResponsiveContent(
+        child: ListView(
+          children: [
+            // 账号信息
+            ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person)),
+              title: Text(auth.user?.username ?? '未登录'),
+              subtitle: Text(auth.user?.email ?? ''),
             ),
-          ),
-        ],
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('修改密码'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _changePassword,
+            ),
+            ListTile(
+              leading: const Icon(Icons.devices),
+              title: const Text('登录设备'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DevicePage()),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

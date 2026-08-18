@@ -5,6 +5,7 @@ import '../models/file_vo.dart';
 import '../services/user_service.dart';
 import '../utils/format.dart';
 import '../widgets/file_type_icon.dart';
+import '../widgets/responsive.dart';
 
 /// 文件搜索页
 class SearchPage extends ConsumerStatefulWidget {
@@ -65,7 +66,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           IconButton(icon: const Icon(Icons.search), onPressed: _search),
         ],
       ),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

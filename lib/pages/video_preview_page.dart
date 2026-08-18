@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/file_vo.dart';
+import '../services/download_service.dart';
 import '../services/user_service.dart';
 
 /// 视频预览页
@@ -28,6 +31,11 @@ class _VideoPreviewPageState extends State<VideoPreviewPage> {
   }
 
   Future<void> _init() async {
+    // Windows 暂不支持 video_player，走「下载后用系统播放器」降级
+    if (Platform.isWindows) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     try {
       final url =
           await FileService.instance.resolvePreviewUrl(widget.file.fileId);
@@ -112,6 +120,46 @@ class _VideoPreviewPageState extends State<VideoPreviewPage> {
         ),
       );
     }
+    // Windows：暂不支持内嵌播放，引导下载后用系统播放器
+    if (Platform.isWindows) {
+      return _buildWindowsFallback();
+    }
     return Chewie(controller: _chewieController!);
+  }
+
+  Widget _buildWindowsFallback() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.play_circle_outline, color: Colors.white54, size: 64),
+          const SizedBox(height: 16),
+          const Text(
+            'Windows 暂不支持内嵌视频播放',
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            icon: const Icon(Icons.download),
+            label: const Text('下载并用系统播放器打开'),
+            onPressed: () async {
+              try {
+                await DownloadService.instance.downloadAndOpen(
+                  fileId: widget.file.fileId,
+                  filename: widget.file.filename,
+                );
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('下载失败：$e')),
+                  );
+                }
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

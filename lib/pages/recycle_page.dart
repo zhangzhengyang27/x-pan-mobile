@@ -5,6 +5,7 @@ import '../models/file_vo.dart';
 import '../services/recycle_service.dart';
 import '../utils/format.dart';
 import '../widgets/file_type_icon.dart';
+import '../widgets/responsive.dart';
 
 /// 回收站页
 class RecyclePage extends ConsumerStatefulWidget {
@@ -87,7 +88,7 @@ class _RecyclePageState extends ConsumerState<RecyclePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('回收站')),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

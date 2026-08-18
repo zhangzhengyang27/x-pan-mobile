@@ -1,15 +1,21 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../core/network/http_client.dart';
 import '../models/file_vo.dart';
 import '../services/preview_service.dart';
+import '../widgets/pdf_preview_view.dart';
 
 /// Office 文档预览页
 ///
-/// 通过后端异步预览任务（office → pdf 转换）拿到预览直链，
-/// 用 WebView 加载。
+/// 通过后端异步预览任务（office → pdf 转换）拿到预览直链。
+/// - 移动端：用 WebView 加载直链。
+/// - 桌面端（macOS/Windows）：webview_flutter 不支持，改为下载 PDF 直链后用
+///    [PdfPreviewView]（pdfx）渲染，复用 PDF 渲染链路。
 class OfficePreviewPage extends StatefulWidget {
   const OfficePreviewPage({super.key, required this.file});
 
@@ -21,6 +27,7 @@ class OfficePreviewPage extends StatefulWidget {
 
 class _OfficePreviewPageState extends State<OfficePreviewPage> {
   WebViewController? _controller;
+  String? _localPdfPath;
   String? _error;
   bool _loading = true;
   Timer? _pollTimer;
@@ -82,6 +89,31 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
   }
 
   Future<void> _loadUrl(String url) async {
+    if (Platform.isWindows || Platform.isMacOS) {
+      // 桌面端：下载 PDF 直链后用 pdfx 渲染
+      try {
+        final dir = await getTemporaryDirectory();
+        final savePath =
+            '${dir.path}/preview_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        await HttpClient.instance.dio.download(url, savePath);
+        if (mounted) {
+          setState(() {
+            _localPdfPath = savePath;
+            _loading = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _error = e.toString();
+            _loading = false;
+          });
+        }
+      }
+      return;
+    }
+
+    // 移动端：WebView 加载
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..loadRequest(Uri.parse(url));
@@ -96,6 +128,15 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    // 清理桌面端临时下载的预览 PDF
+    final path = _localPdfPath;
+    if (path != null) {
+      try {
+        File(path).delete();
+      } catch (_) {
+        // 忽略清理失败
+      }
+    }
     super.dispose();
   }
 
@@ -103,7 +144,11 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.file.filename, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          widget.file.filename,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: _buildBody(),
     );
@@ -130,6 +175,11 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
         ),
       );
     }
+    // 桌面端：pdfx 渲染 PDF 直链
+    if (_localPdfPath != null) {
+      return PdfPreviewView(filePath: _localPdfPath!);
+    }
+    // 移动端：WebView
     return WebViewWidget(controller: _controller!);
   }
 }

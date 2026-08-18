@@ -5,6 +5,7 @@ import '../models/file_vo.dart';
 import '../services/vault_service.dart';
 import '../utils/format.dart';
 import '../widgets/file_type_icon.dart';
+import '../widgets/responsive.dart';
 
 /// 隐私保险箱页
 class VaultPage extends ConsumerStatefulWidget {
@@ -196,7 +197,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
             ),
         ],
       ),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

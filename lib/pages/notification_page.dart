@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/notification_provider.dart';
+import '../widgets/responsive.dart';
 
 /// 通知中心页
 class NotificationPage extends ConsumerWidget {
@@ -24,42 +25,44 @@ class NotificationPage extends ConsumerWidget {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          // 连接状态
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: state.connected
-                ? Colors.green.withValues(alpha: 0.1)
-                : Colors.grey.withValues(alpha: 0.1),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.circle,
-                  size: 10,
-                  color: state.connected ? Colors.green : Colors.grey,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  state.connected ? '实时通知已连接' : '实时通知未连接',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: state.notices.isEmpty
-                ? const Center(child: Text('暂无通知'))
-                : ListView.builder(
-                    itemCount: state.notices.length,
-                    itemBuilder: (ctx, i) {
-                      final notice = state.notices[i];
-                      return _buildNotice(context, notice);
-                    },
+      body: ResponsiveContent(
+        child: Column(
+          children: [
+            // 连接状态
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: state.connected
+                  ? Colors.green.withValues(alpha: 0.1)
+                  : Colors.grey.withValues(alpha: 0.1),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.circle,
+                    size: 10,
+                    color: state.connected ? Colors.green : Colors.grey,
                   ),
-          ),
-        ],
+                  const SizedBox(width: 8),
+                  Text(
+                    state.connected ? '实时通知已连接' : '实时通知未连接',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: state.notices.isEmpty
+                  ? const Center(child: Text('暂无通知'))
+                  : ListView.builder(
+                      itemCount: state.notices.length,
+                      itemBuilder: (ctx, i) {
+                        final notice = state.notices[i];
+                        return _buildNotice(context, notice);
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

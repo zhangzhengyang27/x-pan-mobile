@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/dedup_service.dart';
+import '../widgets/responsive.dart';
 
 /// 文件去重页
 class DedupPage extends ConsumerStatefulWidget {
@@ -96,7 +97,7 @@ class _DedupPageState extends ConsumerState<DedupPage> {
             ),
         ],
       ),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

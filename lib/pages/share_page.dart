@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/share_service.dart';
+import '../widgets/responsive.dart';
 import 'share_detail_page.dart';
 
 /// 分享管理页
@@ -154,7 +155,7 @@ class _SharePageState extends ConsumerState<SharePage> {
           ),
         ],
       ),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/file_version.dart';
 import '../services/user_service.dart';
 import '../utils/format.dart';
+import '../widgets/responsive.dart';
 
 /// 文件版本历史页
 class VersionHistoryPage extends ConsumerStatefulWidget {
@@ -110,7 +111,7 @@ class _VersionHistoryPageState extends ConsumerState<VersionHistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('版本历史')),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../models/file_vo.dart';
+import '../services/download_service.dart';
 import '../services/user_service.dart';
 
 /// 音频预览页
@@ -27,6 +30,11 @@ class _AudioPreviewPageState extends State<AudioPreviewPage> {
   }
 
   Future<void> _init() async {
+    // Windows 暂不支持 just_audio，走「下载后用系统播放器」降级
+    if (Platform.isWindows) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     try {
       final url =
           await FileService.instance.resolvePreviewUrl(widget.file.fileId);
@@ -68,7 +76,9 @@ class _AudioPreviewPageState extends State<AudioPreviewPage> {
       body: Center(
         child: _loading
             ? const CircularProgressIndicator()
-            : _error != null
+            : Platform.isWindows
+                ? _buildWindowsFallback()
+                : _error != null
                 ? Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text('加载失败：$_error', textAlign: TextAlign.center),
@@ -147,5 +157,36 @@ class _AudioPreviewPageState extends State<AudioPreviewPage> {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  Widget _buildWindowsFallback() {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.music_note, size: 64, color: scheme.primary.withValues(alpha: 0.5)),
+        const SizedBox(height: 16),
+        const Text('Windows 暂不支持内嵌音频播放'),
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          icon: const Icon(Icons.download),
+          label: const Text('下载并用系统播放器打开'),
+          onPressed: () async {
+            try {
+              await DownloadService.instance.downloadAndOpen(
+                fileId: widget.file.fileId,
+                filename: widget.file.filename,
+              );
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('下载失败：$e')),
+                );
+              }
+            }
+          },
+        ),
+      ],
+    );
   }
 }

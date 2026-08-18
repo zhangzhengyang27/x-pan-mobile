@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
 
 import '../models/file_vo.dart';
 import '../services/download_service.dart';
+import '../widgets/pdf_preview_view.dart';
 
 /// PDF 预览页
 ///
-/// PDF 无法直接通过 ptoken 直链预览（flutter_pdfview 需要可下载的文件路径），
-/// 这里先下载到临时文件再加载。
+/// 下载到临时文件后用 [PdfPreviewView]（pdfx）渲染。
 class PDFPreviewPage extends StatefulWidget {
   const PDFPreviewPage({super.key, required this.file});
 
@@ -54,7 +53,11 @@ class _PDFPreviewPageState extends State<PDFPreviewPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.file.filename, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          widget.file.filename,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: _buildBody(),
     );
@@ -67,18 +70,6 @@ class _PDFPreviewPageState extends State<PDFPreviewPage> {
     if (_error != null) {
       return Center(child: Text('加载失败：$_error'));
     }
-    return PDFView(
-      filePath: _localPath!,
-      enableSwipe: true,
-      swipeHorizontal: false,
-      autoSpacing: true,
-      pageFling: true,
-      onError: (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('PDF 加载错误：$e')));
-        }
-      },
-    );
+    return PdfPreviewView(filePath: _localPath!);
   }
 }

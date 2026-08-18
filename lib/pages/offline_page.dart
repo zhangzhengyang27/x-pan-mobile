@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/offline_service.dart';
+import '../widgets/responsive.dart';
 
 /// 离线下载页
 class OfflinePage extends ConsumerStatefulWidget {
@@ -122,7 +123,7 @@ class _OfflinePageState extends ConsumerState<OfflinePage> {
         onPressed: _create,
         child: const Icon(Icons.add),
       ),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 

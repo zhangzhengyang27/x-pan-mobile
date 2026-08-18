@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/upload_provider.dart';
+import '../widgets/responsive.dart';
 
 /// 上传任务面板
 class UploadTaskPage extends ConsumerWidget {
@@ -32,15 +33,17 @@ class UploadTaskPage extends ConsumerWidget {
             ),
         ],
       ),
-      body: queue.tasks.isEmpty
-          ? const Center(child: Text('暂无上传任务'))
-          : ListView.builder(
-              itemCount: queue.tasks.length,
-              itemBuilder: (ctx, i) {
-                final task = queue.tasks[i];
-                return _buildTask(context, task, manager);
-              },
-            ),
+      body: ResponsiveContent(
+        child: queue.tasks.isEmpty
+            ? const Center(child: Text('暂无上传任务'))
+            : ListView.builder(
+                itemCount: queue.tasks.length,
+                itemBuilder: (ctx, i) {
+                  final task = queue.tasks[i];
+                  return _buildTask(context, task, manager);
+                },
+              ),
+      ),
     );
   }
 

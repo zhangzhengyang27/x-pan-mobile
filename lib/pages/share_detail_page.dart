@@ -7,6 +7,7 @@ import '../models/file_vo.dart';
 import '../services/share_service.dart';
 import '../utils/format.dart';
 import '../widgets/folder_picker_dialog.dart';
+import '../widgets/responsive.dart';
 
 /// 分享详情页
 ///
@@ -162,7 +163,7 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('分享详情')),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
       floatingActionButton: _detail != null
           ? FloatingActionButton.extended(
               onPressed: _save,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_info.dart';
 import '../providers/auth_provider.dart';
 import '../utils/format.dart';
+import '../widgets/responsive.dart';
 
 /// 仪表盘 / 统计页
 ///
@@ -19,30 +20,32 @@ class DashboardPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('存储统计')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // 存储用量卡片
-          if (user != null) ...[
-            _buildStorageCard(context, user),
-            const SizedBox(height: 24),
-          ],
-          const Text(
-            '功能说明',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '详细的文件类型分布图表将在后续版本中补充，'
-                '目前支持查看存储空间使用情况。',
-                style: TextStyle(fontSize: 13, height: 1.6),
+      body: ResponsiveContent(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // 存储用量卡片
+            if (user != null) ...[
+              _buildStorageCard(context, user),
+              const SizedBox(height: 24),
+            ],
+            const Text(
+              '功能说明',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '详细的文件类型分布图表将在后续版本中补充，'
+                  '目前支持查看存储空间使用情况。',
+                  style: TextStyle(fontSize: 13, height: 1.6),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

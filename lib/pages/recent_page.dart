@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/storage/recent_storage.dart';
 import '../models/file_vo.dart';
 import '../widgets/file_type_icon.dart';
+import '../widgets/responsive.dart';
 
 /// 最近访问记录页
 class RecentPage extends ConsumerStatefulWidget {
@@ -58,7 +59,7 @@ class _RecentPageState extends ConsumerState<RecentPage> {
             ),
         ],
       ),
-      body: _buildBody(),
+      body: ResponsiveContent(child: _buildBody()),
     );
   }
 
