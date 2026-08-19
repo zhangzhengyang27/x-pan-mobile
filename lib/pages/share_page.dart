@@ -142,23 +142,58 @@ class _SharePageState extends ConsumerState<SharePage> {
 
   String _typeText(int type) {
     switch (type) {
+      case 0:
+        return '需提取码';
       case 1:
         return '公开';
       case 2:
-        return '需提取码';
-      case 3:
         return '指定用户';
       default:
         return '未知';
     }
   }
 
+  /// 永久有效阈值：后端永久分享的结束时间固定为 2099-12-31 23:59:59，
+  /// 结束时间落在 2099 年（含）之后即视为“永久有效”。
+  static final DateTime _permanentThreshold = DateTime(2099);
+
+  /// 解析后端返回的日期时间字符串（兼容 " " 和 "T" 分隔）。
+  DateTime? _parseEndTime(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final normalized = raw.trim().replaceFirst(' ', 'T');
+    return DateTime.tryParse(normalized);
+  }
+
+  /// 分享有效期展示文案
+  String _expireText(ShareVO share) {
+    final endDate = _parseEndTime(share.shareEndTime);
+    if (endDate == null) {
+      return ' · 永久有效';
+    }
+    // 永久有效：结束时间落在远未来（2099 年及以后）
+    if (!endDate.isBefore(_permanentThreshold)) {
+      return ' · 永久有效';
+    }
+    // 格式化展示：2026-08-19 09:57
+    final formatted =
+        '${endDate.year}-${_pad(endDate.month)}-${_pad(endDate.day)} '
+        '${_pad(endDate.hour)}:${_pad(endDate.minute)}';
+    return ' · 有效期至: $formatted';
+  }
+
+  String _pad(int v) => v.toString().padLeft(2, '0');
+
   /// 分享是否已过期（超过有效期）
   bool _isExpired(ShareVO share) {
-    final end = share.shareEndTime;
-    if (end == null || end.isEmpty) return false;
-    final endDate = DateTime.tryParse(end.replaceAll(' ', 'T'));
+    // 优先信任后端返回的 shareStatus（1 通常表示已过期 / 已取消）
+    if (share.shareStatus == 1) return true;
+
+    final endDate = _parseEndTime(share.shareEndTime);
     if (endDate == null) return false;
+
+    // 永久有效（结束时间在远未来）不会过期
+    if (!endDate.isBefore(_permanentThreshold)) return false;
+
     return endDate.isBefore(DateTime.now());
   }
 
@@ -261,8 +296,8 @@ class _SharePageState extends ConsumerState<SharePage> {
               const SizedBox(height: AppTokens.space8),
               Text(
                 '${_typeText(share.shareType)}'
-                '${share.shareCode.isNotEmpty ? ' · 提取码: ${share.shareCode}' : ''}'
-                '${share.shareEndTime != null ? ' · 有效期至: ${share.shareEndTime}' : ''}',
+                '${share.shareType == 0 && share.shareCode.isNotEmpty ? ' · 提取码: ${share.shareCode}' : ''}'
+                '${_expireText(share)}',
                 style: AppTokens.bodySmall.copyWith(
                   color: AppTokens.textSecondary(brightness),
                 ),

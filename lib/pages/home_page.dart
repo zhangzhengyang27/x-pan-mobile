@@ -75,6 +75,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
   int _desktopNavIndex = 0;
+  int _mobileTabIndex = 0;
 
   @override
   void initState() {
@@ -343,6 +344,42 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  /// 选择分享有效期（0 永久 / 1 七天 / 2 三十天）
+  Future<int?> _pickShareDayType() async {
+    return showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(AppTokens.space16),
+              child: Text('选择分享有效期', style: AppTokens.titleMedium),
+            ),
+            ListTile(
+              leading: const Icon(Icons.all_inclusive),
+              title: const Text('永久有效'),
+              subtitle: const Text('分享链接不会过期'),
+              onTap: () => Navigator.pop(ctx, 0),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_view_week),
+              title: const Text('7 天有效'),
+              subtitle: const Text('一周后自动过期'),
+              onTap: () => Navigator.pop(ctx, 1),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_month),
+              title: const Text('30 天有效'),
+              subtitle: const Text('一月后自动过期'),
+              onTap: () => Navigator.pop(ctx, 2),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 分享选中文件
   Future<void> _shareFiles(List<FileVO> files) async {
     final fileIds = files.map((f) => f.fileId).toList();
@@ -350,11 +387,16 @@ class _HomePageState extends ConsumerState<HomePage> {
     final shareName = files.length == 1
         ? files.first.filename
         : '${files.first.filename} 等 ${files.length} 个文件';
+
+    final shareDayType = await _pickShareDayType();
+    if (shareDayType == null) return;
+
     try {
       await ShareService.instance.create(
         shareName: shareName,
         fileIds: fileIds,
         shareType: 1, // 公开分享
+        shareDayType: shareDayType,
       );
       _toast('分享成功');
       // 跳转分享页
@@ -707,21 +749,51 @@ class _HomePageState extends ConsumerState<HomePage> {
   }) {
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: label),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('确定'),
+      builder: (ctx) {
+        final brightness = Theme.of(ctx).brightness;
+        return Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(AppTokens.space24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: AppTokens.titleLarge.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                  ),
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: InputDecoration(hintText: label),
+                ),
+                const SizedBox(height: AppTokens.space24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: AppTokens.space12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(ctx, controller.text.trim()),
+                        child: const Text('确定'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -731,20 +803,54 @@ class _HomePageState extends ConsumerState<HomePage> {
   }) {
     return showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
+      builder: (ctx) {
+        final brightness = Theme.of(ctx).brightness;
+        return Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(AppTokens.space24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: AppTokens.titleLarge.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                  ),
+                ),
+                const SizedBox(height: AppTokens.space16),
+                Text(
+                  content,
+                  style: AppTokens.bodyMedium.copyWith(
+                    color: AppTokens.textSecondary(brightness),
+                  ),
+                ),
+                const SizedBox(height: AppTokens.space24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: AppTokens.space12),
+                    Expanded(
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTokens.error,
+                        ),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('确定'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确定'),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -760,12 +866,18 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // 冷启动时 bootstrap 可能晚于首帧完成：认证恢复完成后补充初始化根目录，避免列表为空
+    ref.listen<AuthState>(authProvider, (prev, next) {
+      if (next.user != null && (prev == null || prev.user == null)) {
+        _initRoot();
+      }
+    });
     final auth = ref.watch(authProvider);
     final fileState = ref.watch(fileListProvider);
     final notifier = ref.read(fileListProvider.notifier);
     final desktop = isDesktop(context);
 
-    // 桌面端：侧边导航栏 + 内容区；移动端：抽屉导航
+    // 桌面端：侧边导航栏 + 内容区；移动端：底部 TabBar + IndexedStack
     final mainBody = Column(
       children: [
         HomeBreadcrumbs(
@@ -781,11 +893,25 @@ class _HomePageState extends ConsumerState<HomePage> {
       ],
     );
 
+    // 移动端底部 TabBar（文件/传输/AI/我的）；抽屉保留作为完整功能入口
+    final onFilesTab = _mobileTabIndex == 0;
+    final brightness = Theme.of(context).brightness;
+    final mobileTabStack = IndexedStack(
+      index: _mobileTabIndex,
+      children: [
+        mainBody,
+        const UploadTaskPage(),
+        const AIAssistantPage(),
+        const SettingsPage(),
+      ],
+    );
+
     return Scaffold(
       drawer: desktop
           ? null
           : Drawer(child: SafeArea(child: _buildDrawerNav(auth))),
-      appBar: _buildAppBar(notifier),
+      // 非文件页自带 AppBar，切换 Tab 时隐藏外层 AppBar
+      appBar: desktop || onFilesTab ? _buildAppBar(notifier) : null,
       body: desktop
           ? Row(
               children: [
@@ -800,8 +926,40 @@ class _HomePageState extends ConsumerState<HomePage> {
                 Expanded(child: mainBody),
               ],
             )
-          : mainBody,
-      floatingActionButton: _selectionMode
+          : mobileTabStack,
+      bottomNavigationBar: desktop
+          ? null
+          : NavigationBar(
+              selectedIndex: _mobileTabIndex,
+              onDestinationSelected: (i) =>
+                  setState(() => _mobileTabIndex = i),
+              indicatorColor:
+                  AppTokens.brandPrimary.withValues(alpha: 0.12),
+              backgroundColor: AppTokens.surface(brightness),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.folder_outlined),
+                  selectedIcon: Icon(Icons.folder),
+                  label: '文件',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.upload_file_outlined),
+                  selectedIcon: Icon(Icons.upload_file),
+                  label: '传输',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.auto_awesome_outlined),
+                  selectedIcon: Icon(Icons.auto_awesome),
+                  label: 'AI',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: '我的',
+                ),
+              ],
+            ),
+      floatingActionButton: _selectionMode || !onFilesTab
           ? null
           : FloatingActionButton(
               onPressed: _upload,
@@ -906,15 +1064,6 @@ class _HomePageState extends ConsumerState<HomePage> {
           title: '设置',
           onTap: () => _openPage(const SettingsPage()),
         ),
-        HomeNavItem(
-          icon: Icons.logout,
-          title: '退出登录',
-          onTap: () {
-            // 停止实时通知并断开连接
-            ref.read(notificationProvider.notifier).stop();
-            ref.read(authProvider.notifier).logout();
-          },
-        ),
       ],
     );
   }
@@ -986,10 +1135,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         PopupMenuButton<String>(
           onSelected: (v) async {
             if (v == 'newFolder') await _createFolder();
-            if (v == 'logout') {
-              ref.read(notificationProvider.notifier).stop();
-              await ref.read(authProvider.notifier).logout();
-            }
           },
           itemBuilder: (_) => const [
             PopupMenuItem(
@@ -999,16 +1144,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                   Icon(Icons.create_new_folder_outlined, size: 20),
                   SizedBox(width: AppTokens.space12),
                   Text('新建文件夹'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'logout',
-              child: Row(
-                children: [
-                  Icon(Icons.logout, size: 20),
-                  SizedBox(width: AppTokens.space12),
-                  Text('退出登录'),
                 ],
               ),
             ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../providers/auth_provider.dart';
+import '../providers/notification_provider.dart';
 import '../services/user_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_list_item.dart';
@@ -100,10 +101,56 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ],
             ),
+            const SizedBox(height: AppTokens.space24),
+            AppCard(
+              padding: EdgeInsets.zero,
+              elevation: CardElevation.low,
+              child: AppListItem(
+                onTap: _logout,
+                child: Row(
+                  children: [
+                    const Icon(Icons.logout, color: AppTokens.error),
+                    const SizedBox(width: AppTokens.space12),
+                    Text(
+                      '退出登录',
+                      style: AppTokens.bodyLarge.copyWith(
+                        color: AppTokens.error,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('确定退出当前账号吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTokens.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('退出'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    // 停止实时通知并断开连接（路由守卫会自动跳回登录页）
+    ref.read(notificationProvider.notifier).stop();
+    await ref.read(authProvider.notifier).logout();
   }
 
   Future<void> _changePassword() async {
@@ -181,6 +228,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       );
       _toast('密码修改成功');
       // 修改密码后重新登录
+      ref.read(notificationProvider.notifier).stop();
       await ref.read(authProvider.notifier).logout();
     } catch (e) {
       _toast(e.toString());

@@ -111,7 +111,8 @@ class AppTheme {
       // ─── 按钮 ─────────────────────────────────────────────
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(48),
+          // 仅约束高度、不撑满宽度（保证弹窗内取消/确定按钮可并排展示）
+          minimumSize: const Size(0, 48),
           backgroundColor: AppTokens.brandPrimary,
           foregroundColor: Colors.white,
           textStyle: AppTokens.labelLarge,

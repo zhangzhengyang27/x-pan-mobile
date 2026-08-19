@@ -103,7 +103,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       onSubmitted: (_) => _search(),
                       decoration: const InputDecoration(
                         hintText: '搜索文件',
+                        // 搜索框内嵌于胶囊容器：逐状态覆盖全局主题的边框与填充
+                        filled: false,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
                         isCollapsed: true,
                         contentPadding:
                             EdgeInsets.symmetric(vertical: 14),

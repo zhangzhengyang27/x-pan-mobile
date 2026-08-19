@@ -289,7 +289,7 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
                   ),
                   const SizedBox(width: AppTokens.space8),
                   Text(
-                    '分享于 ${detail.createTime}',
+                    '分享于 ${detail.createTime} · ${_expireLabel(detail.shareEndTime)}',
                     style: AppTokens.bodySmall.copyWith(
                       color: Colors.white70,
                     ),
@@ -365,5 +365,22 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
         ],
       ),
     );
+  }
+
+  /// 有效期展示文案（永久有效 / 有效期至）
+  String _expireLabel(String? shareEndTime) {
+    if (shareEndTime == null || shareEndTime.isEmpty) {
+      return '永久有效';
+    }
+    final normalized = shareEndTime.trim().replaceFirst(' ', 'T');
+    final endDate = DateTime.tryParse(normalized);
+    if (endDate == null) return '永久有效';
+    // 2099 年及以后视为永久有效
+    if (!endDate.isBefore(DateTime(2099))) return '永久有效';
+    final f = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-'
+        '${endDate.day.toString().padLeft(2, '0')} '
+        '${endDate.hour.toString().padLeft(2, '0')}:'
+        '${endDate.minute.toString().padLeft(2, '0')}';
+    return '有效期至 $f';
   }
 }
