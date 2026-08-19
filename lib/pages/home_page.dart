@@ -38,6 +38,7 @@ import 'dashboard_page.dart';
 import 'dedup_page.dart';
 import 'favorite_page.dart';
 import 'home/home_components.dart';
+import 'home/home_dashboard.dart';
 import 'home/home_drawer_nav.dart';
 import 'image_preview_page.dart';
 import 'notification_page.dart';
@@ -50,13 +51,16 @@ import 'search_page.dart';
 import 'settings_page.dart';
 import 'share_page.dart';
 import 'text_preview_page.dart';
+import 'file/category_files_page.dart';
+import '../providers/view_mode_provider.dart';
+import '../widgets/category_grid.dart';
+import '../widgets/view_options_sheet.dart';
 import 'upload_task_page.dart';
 import 'vault_page.dart';
 import 'version_history_page.dart';
 import 'video_preview_page.dart';
 import 'xmind_preview_page.dart';
-
-enum _ViewMode { list, grid }
+import 'profile_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -71,7 +75,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   double _uploadProgress = 0;
   String _uploadingName = '';
 
-  _ViewMode _viewMode = _ViewMode.list;
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
   int _desktopNavIndex = 0;
@@ -884,6 +887,17 @@ class _HomePageState extends ConsumerState<HomePage> {
           names: notifier.breadcrumbs.map((c) => c.name).toList(),
           onJump: notifier.jumpTo,
         ),
+        // 分类直达入口（对齐主流网盘）
+        _CategoryShortcut(
+          onOpen: (label, fileTypesParam) => Navigator.of(context).push(
+            AppTokens.route(
+              CategoryFilesPage(
+                title: label,
+                fileTypesParam: fileTypesParam,
+              ),
+            ),
+          ),
+        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _refresh,
@@ -893,16 +907,17 @@ class _HomePageState extends ConsumerState<HomePage> {
       ],
     );
 
-    // 移动端底部 TabBar（文件/传输/AI/我的）；抽屉保留作为完整功能入口
-    final onFilesTab = _mobileTabIndex == 0;
+    // 移动端底部 TabBar（首页/文件/传输/AI/我的）；抽屉保留作为完整功能入口
+    final onFilesTab = _mobileTabIndex == 1;
     final brightness = Theme.of(context).brightness;
     final mobileTabStack = IndexedStack(
       index: _mobileTabIndex,
       children: [
+        const HomeDashboard(),
         mainBody,
         const UploadTaskPage(),
         const AIAssistantPage(),
-        const SettingsPage(),
+        const ProfilePage(),
       ],
     );
 
@@ -938,6 +953,11 @@ class _HomePageState extends ConsumerState<HomePage> {
               backgroundColor: AppTokens.surface(brightness),
               destinations: const [
                 NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: '首页',
+                ),
+                NavigationDestination(
                   icon: Icon(Icons.folder_outlined),
                   selectedIcon: Icon(Icons.folder),
                   label: '文件',
@@ -962,7 +982,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       floatingActionButton: _selectionMode || !onFilesTab
           ? null
           : FloatingActionButton(
-              onPressed: _upload,
+              onPressed: _showAddSheet,
               child: const Icon(Icons.add),
             ),
       bottomSheet: _uploading
@@ -971,6 +991,68 @@ class _HomePageState extends ConsumerState<HomePage> {
               progress: _uploadProgress,
             )
           : null,
+    );
+  }
+
+  /// 文件页 FAB 底部弹窗（上传/新建文件夹/离线下载）
+  void _showAddSheet() {
+    final brightness = Theme.of(context).brightness;
+    showModalBottomSheet<void>(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.radiusXl),
+        ),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppTokens.space20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.upload_file_outlined),
+                title: Text(
+                  '上传文件',
+                  style: AppTokens.bodyLarge.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _upload();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.create_new_folder_outlined),
+                title: Text(
+                  '新建文件夹',
+                  style: AppTokens.bodyLarge.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _createFolder();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cloud_download_outlined),
+                title: Text(
+                  '离线下载',
+                  style: AppTokens.bodyLarge.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openPage(const OfflinePage());
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1109,13 +1191,12 @@ class _HomePageState extends ConsumerState<HomePage> {
       actions: [
         IconButton(
           icon: Icon(
-            _viewMode == _ViewMode.list ? Icons.grid_view : Icons.view_list,
+            ref.watch(fileViewModeProvider).viewMode == FileViewMode.list
+                ? Icons.grid_view
+                : Icons.view_list,
           ),
-          tooltip: '切换视图',
-          onPressed: () => setState(() {
-            _viewMode =
-                _viewMode == _ViewMode.list ? _ViewMode.grid : _ViewMode.list;
-          }),
+          tooltip: '视图与排序',
+          onPressed: () => showViewOptionsSheet(context),
         ),
         IconButton(
           icon: const Icon(Icons.checklist),
@@ -1187,7 +1268,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       );
     }
 
-    if (_viewMode == _ViewMode.grid) {
+    if (ref.read(fileViewModeProvider).viewMode == FileViewMode.grid) {
       return _buildGrid(state.files);
     }
     return _buildList(state.files);
@@ -1492,6 +1573,73 @@ class _FileGridItem extends StatelessWidget {
           borderRadius: AppTokens.radiusMd,
         ),
         errorWidget: (_, __, ___) => const Icon(Icons.image_outlined, size: 40),
+      ),
+    );
+  }
+}
+
+/// 文件页顶部分类直达入口（横向滚动）
+class _CategoryShortcut extends StatelessWidget {
+  const _CategoryShortcut({required this.onOpen});
+  final void Function(String label, String fileTypesParam) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return Container(
+      height: 84,
+      margin: const EdgeInsets.fromLTRB(
+        AppTokens.space12,
+        AppTokens.space8,
+        AppTokens.space12,
+        AppTokens.space4,
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: kFileCategories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: AppTokens.space12),
+        itemBuilder: (context, i) {
+          final c = kFileCategories[i];
+          return InkWell(
+            onTap: () =>
+                onOpen(c.label, c.fileTypes.map((t) => t.value).join(',')),
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            child: Container(
+              width: 76,
+              padding: const EdgeInsets.all(AppTokens.space8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                color: AppTokens.surfaceElevated(brightness),
+                border: Border.all(
+                  color:
+                      AppTokens.divider(brightness).withValues(alpha: 0.5),
+                  width: 0.5,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      gradient: c.gradient,
+                      borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                    ),
+                    child: Icon(c.icon, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(height: AppTokens.space8),
+                  Text(
+                    c.label,
+                    style: AppTokens.labelSmall.copyWith(
+                      color: AppTokens.textPrimary(brightness),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
