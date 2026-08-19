@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_config.dart';
 import '../core/storage/recent_storage.dart';
+import '../core/theme/app_tokens.dart';
 import '../core/storage/upload_task_storage.dart';
 import '../models/file_vo.dart';
 import '../providers/auth_provider.dart';
@@ -23,9 +24,12 @@ import '../services/share_service.dart';
 import '../services/upload_service.dart';
 import '../services/vault_service.dart';
 import '../utils/format.dart';
+import '../widgets/app_list_item.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/file_type_icon.dart';
 import '../widgets/folder_picker_dialog.dart';
 import '../widgets/responsive.dart';
+import '../widgets/skeleton.dart';
 import '../widgets/tag_dialog.dart';
 import 'ai_assistant_page.dart';
 import 'audio_preview_page.dart';
@@ -33,6 +37,8 @@ import 'csv_preview_page.dart';
 import 'dashboard_page.dart';
 import 'dedup_page.dart';
 import 'favorite_page.dart';
+import 'home/home_components.dart';
+import 'home/home_drawer_nav.dart';
 import 'image_preview_page.dart';
 import 'notification_page.dart';
 import 'offline_page.dart';
@@ -147,31 +153,20 @@ class _HomePageState extends ConsumerState<HomePage> {
     // xmind 思维导图（通过扩展名识别）
     if (file.filename.toLowerCase().endsWith('.xmind')) {
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => XmindPreviewPage(file: file)),
+        AppTokens.route(XmindPreviewPage(file: file)),
       );
       return;
     }
 
     final route = switch (file.fileType) {
       FileType.image => _buildImageRoute(file),
-      FileType.video => MaterialPageRoute(
-          builder: (_) => VideoPreviewPage(file: file),
-        ),
-      FileType.audio => MaterialPageRoute(
-          builder: (_) => AudioPreviewPage(file: file),
-        ),
-      FileType.pdf => MaterialPageRoute(
-          builder: (_) => PDFPreviewPage(file: file),
-        ),
-      FileType.csv => MaterialPageRoute(
-          builder: (_) => CsvPreviewPage(file: file),
-        ),
-      FileType.txt || FileType.code => MaterialPageRoute(
-          builder: (_) => TextPreviewPage(file: file),
-        ),
-      FileType.word || FileType.excel || FileType.ppt => MaterialPageRoute(
-          builder: (_) => OfficePreviewPage(file: file),
-        ),
+      FileType.video => AppTokens.route(VideoPreviewPage(file: file)),
+      FileType.audio => AppTokens.route(AudioPreviewPage(file: file)),
+      FileType.pdf => AppTokens.route(PDFPreviewPage(file: file)),
+      FileType.csv => AppTokens.route(CsvPreviewPage(file: file)),
+      FileType.txt || FileType.code => AppTokens.route(TextPreviewPage(file: file)),
+      FileType.word || FileType.excel || FileType.ppt =>
+        AppTokens.route(OfficePreviewPage(file: file)),
       _ => null,
     };
 
@@ -198,13 +193,13 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  MaterialPageRoute<void> _buildImageRoute(FileVO file) {
+  Route<void> _buildImageRoute(FileVO file) {
     final state = ref.read(fileListProvider);
     final images =
         state.files.where((f) => f.fileType == FileType.image).toList();
     final index = images.indexWhere((f) => f.fileId == file.fileId);
-    return MaterialPageRoute(
-      builder: (_) => ImagePreviewPage(
+    return AppTokens.route(
+      ImagePreviewPage(
         files: images,
         initialIndex: index < 0 ? 0 : index,
       ),
@@ -267,11 +262,16 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _createFolder() async {
     final ctrl = TextEditingController();
-    final name = await _showInputDialog(
-      title: '新建文件夹',
-      label: '文件夹名称',
-      controller: ctrl,
-    );
+    final String? name;
+    try {
+      name = await _showInputDialog(
+        title: '新建文件夹',
+        label: '文件夹名称',
+        controller: ctrl,
+      );
+    } finally {
+      ctrl.dispose();
+    }
     if (name == null || name.isEmpty) return;
     try {
       await ref.read(fileListProvider.notifier).createFolder(name);
@@ -282,11 +282,16 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _rename(FileVO file) async {
     final ctrl = TextEditingController(text: file.filename);
-    final name = await _showInputDialog(
-      title: '重命名',
-      label: '新名称',
-      controller: ctrl,
-    );
+    final String? name;
+    try {
+      name = await _showInputDialog(
+        title: '重命名',
+        label: '新名称',
+        controller: ctrl,
+      );
+    } finally {
+      ctrl.dispose();
+    }
     if (name == null || name.isEmpty || name == file.filename) return;
     try {
       await ref.read(fileListProvider.notifier).rename(file.fileId, name);
@@ -354,9 +359,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       _toast('分享成功');
       // 跳转分享页
       if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SharePage()),
-        );
+        Navigator.of(context).push(AppTokens.route(const SharePage()));
       }
     } catch (e) {
       _toast(e.toString());
@@ -752,7 +755,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _openPage(Widget page) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    Navigator.of(context).push(AppTokens.route(page));
   }
 
   @override
@@ -765,7 +768,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     // 桌面端：侧边导航栏 + 内容区；移动端：抽屉导航
     final mainBody = Column(
       children: [
-        _buildBreadcrumbs(notifier),
+        HomeBreadcrumbs(
+          names: notifier.breadcrumbs.map((c) => c.name).toList(),
+          onJump: notifier.jumpTo,
+        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _refresh,
@@ -778,36 +784,17 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Scaffold(
       drawer: desktop
           ? null
-          : Drawer(
-              child: SafeArea(
-                child: _buildNavList(auth),
-              ),
-            ),
+          : Drawer(child: SafeArea(child: _buildDrawerNav(auth))),
       appBar: _buildAppBar(notifier),
       body: desktop
           ? Row(
               children: [
-                // 用 SingleChildScrollView 包裹，避免低高度窗口下导航项溢出
-                SingleChildScrollView(
-                  child: NavigationRail(
-                    selectedIndex: _desktopNavIndex,
-                    onDestinationSelected: (i) {
-                      setState(() => _desktopNavIndex = i);
-                      _openDesktopNav(i);
-                    },
-                    labelType: NavigationRailLabelType.all,
-                    leading: Padding(
-                      padding: const EdgeInsets.only(top: 8, bottom: 8),
-                      child: CircleAvatar(
-                        radius: 20,
-                        child: Icon(
-                          Icons.person,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                    destinations: _navDestinations(),
-                  ),
+                HomeDesktopRail(
+                  selectedIndex: _desktopNavIndex,
+                  onDestinationSelected: (i) {
+                    setState(() => _desktopNavIndex = i);
+                    _openDesktopNav(i);
+                  },
                 ),
                 const VerticalDivider(width: 1),
                 Expanded(child: mainBody),
@@ -820,64 +807,13 @@ class _HomePageState extends ConsumerState<HomePage> {
               onPressed: _upload,
               child: const Icon(Icons.add),
             ),
-      bottomSheet: _uploading ? _buildUploadBar() : null,
+      bottomSheet: _uploading
+          ? UploadProgressBar(
+              name: _uploadingName,
+              progress: _uploadProgress,
+            )
+          : null,
     );
-  }
-
-  /// 桌面端侧边导航项
-  List<NavigationRailDestination> _navDestinations() {
-    return const [
-      NavigationRailDestination(
-        icon: Icon(Icons.cloud_outlined),
-        selectedIcon: Icon(Icons.cloud),
-        label: Text('我的网盘'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.history),
-        label: Text('最近访问'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.star_outline),
-        selectedIcon: Icon(Icons.star),
-        label: Text('收藏'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.share_outlined),
-        label: Text('分享'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.cloud_download_outlined),
-        label: Text('离线'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.upload_file_outlined),
-        label: Text('上传任务'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.delete_outline),
-        label: Text('回收站'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.security),
-        label: Text('保险箱'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.auto_awesome),
-        label: Text('AI'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.dashboard_outlined),
-        label: Text('统计'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.notifications_outlined),
-        label: Text('通知'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.settings_outlined),
-        label: Text('设置'),
-      ),
-    ];
   }
 
   /// 桌面端侧边导航点击分发
@@ -899,121 +835,81 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (page != null) _openPage(page);
   }
 
-  /// 移动端抽屉导航项（可复用）
-  Widget _buildNavList(dynamic auth) {
-    return Column(
-      children: [
-        UserAccountsDrawerHeader(
-          accountName: Text(auth.user?.username ?? '未登录'),
-          accountEmail: Text(
-            '已用 ${translateFileSize((auth.user?.usedSize ?? 0).toDouble())} / ${translateFileSize((auth.user?.totalSize ?? 0).toDouble())}',
-          ),
-          currentAccountPicture: CircleAvatar(
-            child: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
-          ),
+  /// 移动端抽屉导航（导航项在此定义，跳转逻辑集中管理）
+  Widget _buildDrawerNav(AuthState auth) {
+    return HomeDrawerNav(
+      username: auth.user?.username ?? '未登录',
+      usedSize: (auth.user?.usedSize ?? 0).toDouble(),
+      totalSize: (auth.user?.totalSize ?? 0).toDouble(),
+      fileItems: [
+        HomeNavItem(
+          icon: Icons.history,
+          title: '最近访问',
+          onTap: () => _openPage(const RecentPage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.delete_outline),
-          title: const Text('回收站'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const RecyclePage());
-          },
+        HomeNavItem(
+          icon: Icons.star_outline,
+          title: '我的收藏',
+          onTap: () => _openPage(const FavoritePage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.share_outlined),
-          title: const Text('我的分享'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const SharePage());
-          },
+        HomeNavItem(
+          icon: Icons.share_outlined,
+          title: '我的分享',
+          onTap: () => _openPage(const SharePage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.cloud_download_outlined),
-          title: const Text('离线下载'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const OfflinePage());
-          },
+        HomeNavItem(
+          icon: Icons.cloud_upload_outlined,
+          title: '上传任务',
+          onTap: () => _openPage(const UploadTaskPage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.cloud_upload_outlined),
-          title: const Text('上传任务'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const UploadTaskPage());
-          },
+        HomeNavItem(
+          icon: Icons.cloud_download_outlined,
+          title: '离线下载',
+          onTap: () => _openPage(const OfflinePage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.history),
-          title: const Text('最近访问'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const RecentPage());
-          },
+        HomeNavItem(
+          icon: Icons.delete_outline,
+          title: '回收站',
+          onTap: () => _openPage(const RecyclePage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.star_outline),
-          title: const Text('我的收藏'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const FavoritePage());
-          },
+      ],
+      toolItems: [
+        HomeNavItem(
+          icon: Icons.security,
+          title: '隐私保险箱',
+          onTap: () => _openPage(const VaultPage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.security),
-          title: const Text('隐私保险箱'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const VaultPage());
-          },
+        HomeNavItem(
+          icon: Icons.cleaning_services_outlined,
+          title: '文件去重',
+          onTap: () => _openPage(const DedupPage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.cleaning_services_outlined),
-          title: const Text('文件去重'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const DedupPage());
-          },
+        HomeNavItem(
+          icon: Icons.dashboard_outlined,
+          title: '存储统计',
+          onTap: () => _openPage(const DashboardPage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.dashboard_outlined),
-          title: const Text('存储统计'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const DashboardPage());
-          },
+        HomeNavItem(
+          icon: Icons.auto_awesome,
+          title: 'AI 助手',
+          onTap: () => _openPage(const AIAssistantPage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.auto_awesome),
-          title: const Text('AI 助手'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const AIAssistantPage());
-          },
+      ],
+      accountItems: [
+        HomeNavItem(
+          icon: Icons.notifications_outlined,
+          title: '通知中心',
+          onTap: () => _openPage(const NotificationPage()),
         ),
-        ListTile(
-          leading: const Icon(Icons.notifications_outlined),
-          title: const Text('通知中心'),
-          onTap: () {
-            Navigator.pop(context);
-            _openPage(const NotificationPage());
-          },
+        HomeNavItem(
+          icon: Icons.settings_outlined,
+          title: '设置',
+          onTap: () => _openPage(const SettingsPage()),
         ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.settings_outlined),
-          title: const Text('设置'),
+        HomeNavItem(
+          icon: Icons.logout,
+          title: '退出登录',
           onTap: () {
-            Navigator.pop(context);
-            _openPage(const SettingsPage());
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('退出登录'),
-          onTap: () {
-            Navigator.pop(context);
             // 停止实时通知并断开连接
             ref.read(notificationProvider.notifier).stop();
             ref.read(authProvider.notifier).logout();
@@ -1023,44 +919,44 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  AppBar _buildAppBar(FileListNotifier notifier) {
+  PreferredSizeWidget _buildAppBar(FileListNotifier notifier) {
+    final brightness = Theme.of(context).brightness;
     if (_selectionMode) {
-      return AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: _exitSelection,
-        ),
-        title: Text('已选 ${_selectedIds.length} 项'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: '批量删除',
-            onPressed: _batchDelete,
-          ),
-          IconButton(
-            icon: const Icon(Icons.drive_file_move_outline),
-            tooltip: '批量移动',
-            onPressed: _batchMove,
-          ),
-          IconButton(
-            icon: const Icon(Icons.copy_outlined),
-            tooltip: '批量复制',
-            onPressed: _batchCopy,
-          ),
-          IconButton(
-            icon: const Icon(Icons.share_outlined),
-            tooltip: '批量分享',
-            onPressed: _batchShare,
-          ),
-        ],
+      return SelectionAppBar(
+        selectedCount: _selectedIds.length,
+        onExit: _exitSelection,
+        onDelete: _batchDelete,
+        onMove: _batchMove,
+        onCopy: _batchCopy,
+        onShare: _batchShare,
       );
     }
+
+    final crumbs = notifier.breadcrumbs;
+    final pathDesc = crumbs.length > 1
+        ? crumbs.map((c) => c.name).join(' / ')
+        : null;
 
     return AppBar(
       leading: notifier.canGoBack
           ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _goBack)
           : null,
-      title: const Text('我的网盘'),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('我的网盘'),
+          if (pathDesc != null)
+            Text(
+              pathDesc,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTokens.bodySmall.copyWith(
+                color: AppTokens.textSecondary(brightness),
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+        ],
+      ),
       actions: [
         IconButton(
           icon: Icon(
@@ -1096,97 +992,62 @@ class _HomePageState extends ConsumerState<HomePage> {
             }
           },
           itemBuilder: (_) => const [
-            PopupMenuItem(value: 'newFolder', child: Text('新建文件夹')),
-            PopupMenuItem(value: 'logout', child: Text('退出登录')),
+            PopupMenuItem(
+              value: 'newFolder',
+              child: Row(
+                children: [
+                  Icon(Icons.create_new_folder_outlined, size: 20),
+                  SizedBox(width: AppTokens.space12),
+                  Text('新建文件夹'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'logout',
+              child: Row(
+                children: [
+                  Icon(Icons.logout, size: 20),
+                  SizedBox(width: AppTokens.space12),
+                  Text('退出登录'),
+                ],
+              ),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildBreadcrumbs(FileListNotifier notifier) {
-    final crumbs = notifier.breadcrumbs;
-    if (crumbs.length <= 1) return const SizedBox.shrink();
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: crumbs.length,
-        separatorBuilder: (_, __) => const Icon(Icons.chevron_right, size: 16),
-        itemBuilder: (ctx, i) {
-          final isLast = i == crumbs.length - 1;
-          return Center(
-            child: GestureDetector(
-              onTap: isLast ? null : () => notifier.jumpTo(i),
-              child: Text(
-                crumbs[i].name,
-                style: TextStyle(
-                  color: isLast
-                      ? Theme.of(context).colorScheme.onSurface
-                      : Theme.of(context).colorScheme.primary,
-                  fontWeight: isLast ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildUploadBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _uploadingName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Text('${(_uploadProgress * 100).toStringAsFixed(0)}%'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(value: _uploadProgress),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBody(FileListState state) {
     if (state.loading && state.files.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const FileListSkeleton();
     }
     if (state.error != null && state.files.isEmpty) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          const SizedBox(height: 120),
-          Icon(Icons.error_outline,
-              size: 56, color: Theme.of(context).colorScheme.error),
-          const SizedBox(height: 16),
-          Center(child: Text('加载失败：${state.error}')),
-          const SizedBox(height: 16),
-          Center(
-            child: FilledButton(onPressed: _refresh, child: const Text('重试')),
+          EmptyState(
+            icon: Icons.cloud_off,
+            title: '加载失败',
+            subtitle: state.error,
+            actionLabel: '重试',
+            actionIcon: Icons.refresh,
+            onAction: _refresh,
           ),
         ],
       );
     }
     if (state.files.isEmpty) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          const SizedBox(height: 120),
-          Icon(Icons.folder_open,
-              size: 64, color: Theme.of(context).colorScheme.outline),
-          const SizedBox(height: 16),
-          const Center(child: Text('文件夹为空')),
+          EmptyState(
+            icon: Icons.folder_open,
+            title: '文件夹为空',
+            subtitle: '上传你的第一个文件吧',
+            actionLabel: '上传文件',
+            onAction: _upload,
+          ),
         ],
       );
     }
@@ -1270,34 +1131,116 @@ class _FileTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      selected: selected,
-      selectedTileColor: scheme.primary.withValues(alpha: 0.08),
-      leading: selectionMode
-          ? Icon(
-              selected ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: selected ? scheme.primary : scheme.outline,
-            )
-          : FileTypeIcon(type: file.fileType),
-      title: Text(file.filename, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        file.isFolder
-            ? '文件夹'
-            : file.fileSizeDesc ??
-                translateFileSize(parseFileSize(file.fileSize)),
-        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-      ),
-      trailing: selectionMode
-          ? null
-          : file.isFolder
-              ? Icon(Icons.chevron_right, color: scheme.outline)
-              : IconButton(
-                  icon: const Icon(Icons.more_vert),
-                  onPressed: onLongPress,
+    final brightness = Theme.of(context).brightness;
+    return Stack(
+      children: [
+        AppListItem(
+          selected: selected,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Row(
+            children: [
+              if (selectionMode) ...[
+                Icon(
+                  selected
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: selected
+                      ? AppTokens.brandPrimary
+                      : AppTokens.textTertiary(brightness),
                 ),
-      onTap: onTap,
-      onLongPress: onLongPress,
+                const SizedBox(width: AppTokens.space12),
+              ],
+              FileTypeIcon(type: file.fileType),
+              const SizedBox(width: AppTokens.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      file.filename,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTokens.bodyLarge.copyWith(
+                        color: AppTokens.textPrimary(brightness),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      file.isFolder
+                          ? '文件夹'
+                          : file.fileSizeDesc ??
+                              translateFileSize(parseFileSize(file.fileSize)),
+                      style: AppTokens.bodySmall.copyWith(
+                        color: AppTokens.textSecondary(brightness),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!selectionMode) ...[
+                const SizedBox(width: AppTokens.space8),
+                if (file.isFolder)
+                  Icon(
+                    Icons.chevron_right,
+                    color: AppTokens.textTertiary(brightness),
+                  )
+                else
+                  _MoreButton(onTap: onLongPress),
+              ],
+            ],
+          ),
+        ),
+        // 选中态左侧蓝色竖条
+        if (selected)
+          Positioned(
+            left: 0,
+            top: AppTokens.space12,
+            bottom: AppTokens.space12,
+            child: Container(
+              width: 3,
+              decoration: BoxDecoration(
+                color: AppTokens.brandPrimary,
+                borderRadius:
+                    BorderRadius.circular(AppTokens.radiusFull),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 文件行尾圆形更多按钮
+class _MoreButton extends StatelessWidget {
+  const _MoreButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTokens.surface(brightness),
+        boxShadow: AppTokens.shadowSm(brightness),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+          onTap: onTap,
+          child: Icon(
+            Icons.more_vert,
+            size: 18,
+            color: AppTokens.textSecondary(brightness),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1319,44 +1262,71 @@ class _FileGridItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
           color: selected
-              ? scheme.primary.withValues(alpha: 0.08)
-              : Colors.transparent,
-          border: selected
-              ? Border.all(color: scheme.primary, width: 2)
-              : null,
+              ? AppTokens.brandPrimary.withValues(alpha: 0.08)
+              : AppTokens.surface(brightness),
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          border: Border.all(
+            color: selected
+                ? AppTokens.brandPrimary
+                : AppTokens.divider(brightness).withValues(alpha: 0.5),
+            width: selected ? 2 : 0.5,
+          ),
+          boxShadow: AppTokens.shadowSm(brightness),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            if (selectionMode)
-              Icon(
-                selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: selected ? scheme.primary : scheme.outline,
-                size: 28,
-              )
-            else if (file.fileType == FileType.image && file.thumbnail != null)
-              _buildThumbnail(context)
-            else
-              FileTypeIcon(type: file.fileType, size: 56),
-            const SizedBox(height: 8),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                file.filename,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12),
+              padding: const EdgeInsets.all(AppTokens.space8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (file.fileType == FileType.image && file.thumbnail != null)
+                    _buildThumbnail(context)
+                  else
+                    FileTypeIcon(type: file.fileType, size: 56),
+                  if (selectionMode) ...[
+                    const SizedBox(height: AppTokens.space4),
+                    Icon(
+                      selected
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      color: selected
+                          ? AppTokens.brandPrimary
+                          : AppTokens.textTertiary(brightness),
+                      size: 24,
+                    ),
+                  ],
+                  const SizedBox(height: AppTokens.space8),
+                  Text(
+                    file.filename,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: AppTokens.bodySmall.copyWith(
+                      color: AppTokens.textPrimary(brightness),
+                    ),
+                  ),
+                ],
               ),
             ),
+            // 选中角标
+            if (selected)
+              Positioned(
+                top: AppTokens.space4,
+                right: AppTokens.space4,
+                child: const Icon(
+                  Icons.check_circle,
+                  color: AppTokens.brandPrimary,
+                  size: 20,
+                ),
+              ),
           ],
         ),
       ),
@@ -1370,7 +1340,7 @@ class _FileGridItem extends StatelessWidget {
         ? thumbnail
         : '${AppConfig.apiBaseUrl}$thumbnail';
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppTokens.radiusMd),
       child: CachedNetworkImage(
         imageUrl: url,
         width: 56,
@@ -1381,11 +1351,10 @@ class _FileGridItem extends StatelessWidget {
         memCacheWidth: 128,
         maxWidthDiskCache: 256,
         fadeInDuration: const Duration(milliseconds: 200),
-        placeholder: (_, __) => Container(
+        placeholder: (_, __) => const SkeletonBox(
           width: 56,
           height: 56,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: const Icon(Icons.image_outlined, size: 24),
+          borderRadius: AppTokens.radiusMd,
         ),
         errorWidget: (_, __, ___) => const Icon(Icons.image_outlined, size: 40),
       ),

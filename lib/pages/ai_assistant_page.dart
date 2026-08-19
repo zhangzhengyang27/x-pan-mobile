@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/app_tokens.dart';
 import '../services/llm_service.dart';
 import '../services/user_service.dart';
 import '../widgets/responsive.dart';
@@ -42,26 +43,34 @@ class _AIAssistantPageState extends ConsumerState<AIAssistantPage> {
     if (!mounted) return;
 
     final ctrl = TextEditingController();
-    final key = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('配置 DeepSeek API Key'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(
-            labelText: 'API Key',
-            hintText: 'sk-...',
+    final String? key;
+    try {
+      key = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('配置 DeepSeek API Key'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(
+              labelText: 'API Key',
+              hintText: 'sk-...',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ctrl.dispose();
+    }
     if (key != null && key.isNotEmpty) {
       await LLMService.instance.setApiKey(key);
     }
@@ -252,27 +261,35 @@ class _AIAssistantPageState extends ConsumerState<AIAssistantPage> {
               final ctrl = TextEditingController(
                 text: await LLMService.instance.getApiKey(),
               );
-              if (!context.mounted) return;
-              final key = await showDialog<String>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('配置 DeepSeek API Key'),
-                  content: TextField(
-                    controller: ctrl,
-                    decoration: const InputDecoration(labelText: 'API Key'),
+              if (!context.mounted) {
+                ctrl.dispose();
+                return;
+              }
+              final String? key;
+              try {
+                key = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('配置 DeepSeek API Key'),
+                    content: TextField(
+                      controller: ctrl,
+                      decoration: const InputDecoration(labelText: 'API Key'),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('取消'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                        child: const Text('保存'),
+                      ),
+                    ],
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('取消'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-                      child: const Text('保存'),
-                    ),
-                  ],
-                ),
-              );
+                );
+              } finally {
+                ctrl.dispose();
+              }
               if (key != null) {
                 await LLMService.instance.setApiKey(key);
               }
@@ -285,50 +302,121 @@ class _AIAssistantPageState extends ConsumerState<AIAssistantPage> {
           children: [
             Expanded(
               child: _messages.isEmpty
-                  ? const Center(
-                      child: Text(
-                        '我是 X-Pan AI 助手\n可以帮你搜索文件、整理文件夹\n试试输入「找上周的图片」',
-                        textAlign: TextAlign.center,
-                      ),
-                    )
+                  ? _buildHero()
                   : ListView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(AppTokens.space16),
                       itemCount: _messages.length,
-                      itemBuilder: (ctx, i) {
-                        final msg = _messages[i];
-                        return _buildBubble(msg);
-                      },
+                      itemBuilder: (ctx, i) => _buildBubble(_messages[i]),
                     ),
             ),
-            // 输入栏
+            // 输入栏：底部固定胶囊输入框
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _inputCtrl,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _send(),
-                        decoration: const InputDecoration(
-                          hintText: '输入指令，如「找上周的图片」',
-                        ),
+                padding: const EdgeInsets.all(AppTokens.space12),
+                child: Builder(builder: (ctx) {
+                  final b = Theme.of(ctx).brightness;
+                  return Container(
+                    padding: const EdgeInsets.only(
+                      left: AppTokens.space16,
+                      right: AppTokens.space4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTokens.surface(b),
+                      borderRadius: BorderRadius.circular(
+                        AppTokens.radiusFull,
                       ),
+                      border: Border.all(color: AppTokens.divider(b)),
+                      boxShadow: AppTokens.shadowSm(b),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      icon: _loading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send),
-                      onPressed: _loading ? null : _send,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _inputCtrl,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _send(),
+                            decoration: const InputDecoration(
+                              hintText: '输入指令，如「找上周的图片」',
+                              border: InputBorder.none,
+                              isCollapsed: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                vertical: AppTokens.space12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton.filled(
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppTokens.brandPrimary,
+                            foregroundColor: AppTokens.neutral0,
+                            shape: const CircleBorder(),
+                          ),
+                          icon: _loading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppTokens.neutral0,
+                                  ),
+                                )
+                              : const Icon(Icons.send),
+                          onPressed: _loading ? null : _send,
+                        ),
+                      ],
                     ),
-                  ],
+                  );
+                }),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 空态渐变头部：AI 图标 + 引导文案
+  Widget _buildHero() {
+    return SingleChildScrollView(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.space24,
+          vertical: AppTokens.space48,
+        ),
+        decoration: const BoxDecoration(gradient: AppTokens.brandGradient),
+        child: Column(
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTokens.neutral0.withValues(alpha: 0.15),
+                border: Border.all(
+                  color: AppTokens.neutral0.withValues(alpha: 0.3),
+                  width: 1.5,
                 ),
+              ),
+              child: const Icon(
+                Icons.auto_awesome,
+                size: 36,
+                color: AppTokens.neutral0,
+              ),
+            ),
+            const SizedBox(height: AppTokens.space20),
+            Text(
+              'X-Pan AI 助手',
+              style: AppTokens.headlineMedium.copyWith(
+                color: AppTokens.neutral0,
+              ),
+            ),
+            const SizedBox(height: AppTokens.space8),
+            Text(
+              '可以帮你搜索文件、整理文件夹\n试试输入「找上周的图片」',
+              textAlign: TextAlign.center,
+              style: AppTokens.bodyMedium.copyWith(
+                color: AppTokens.neutral0.withValues(alpha: 0.8),
               ),
             ),
           ],
@@ -339,28 +427,41 @@ class _AIAssistantPageState extends ConsumerState<AIAssistantPage> {
 
   Widget _buildBubble(_ChatMsg msg) {
     final isUser = msg.role == 'user';
-    final scheme = Theme.of(context).colorScheme;
+    final b = Theme.of(context).brightness;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: AppTokens.space4),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.space14,
+          vertical: AppTokens.space12,
+        ),
         constraints: const BoxConstraints(maxWidth: 280),
         decoration: BoxDecoration(
-          color: isUser ? scheme.primary : scheme.surfaceContainerHighest,
+          // 用户：品牌色实心；AI：surface + 阴影描边
+          gradient: isUser ? AppTokens.brandGradient : null,
+          color: isUser ? null : AppTokens.surface(b),
+          border: isUser
+              ? null
+              : Border.all(
+                  color: AppTokens.divider(b).withValues(alpha: 0.6),
+                ),
+          boxShadow: isUser ? AppTokens.shadowBrand(b) : AppTokens.shadowSm(b),
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(isUser ? 14 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 14),
+            topLeft: const Radius.circular(AppTokens.radiusLg),
+            topRight: const Radius.circular(AppTokens.radiusLg),
+            bottomLeft: Radius.circular(
+              isUser ? AppTokens.radiusLg : AppTokens.space4,
+            ),
+            bottomRight: Radius.circular(
+              isUser ? AppTokens.space4 : AppTokens.radiusLg,
+            ),
           ),
         ),
         child: Text(
           msg.content,
-          style: TextStyle(
-            color: isUser ? scheme.onPrimary : scheme.onSurface,
-            fontSize: 14,
-            height: 1.5,
+          style: AppTokens.bodyMedium.copyWith(
+            color: isUser ? AppTokens.neutral0 : AppTokens.textPrimary(b),
           ),
         ),
       ),

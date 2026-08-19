@@ -67,6 +67,68 @@ flutter test         # 测试
 flutter run          # 运行
 ```
 
+### 启动模拟器
+
+先安装对应平台依赖，再启动模拟器，最后运行 App。
+
+#### 1. 查看可用模拟器 / 设备
+
+```bash
+flutter devices
+```
+
+#### 2. 启动 iOS 模拟器
+
+```bash
+# 启动默认 iOS 模拟器（需 macOS）
+open -a Simulator
+
+# 指定设备名启动（用 flutter devices 列出的名称）
+xcrun simctl boot "iPhone 16 Pro"
+open -a Simulator
+```
+
+#### 3. 启动 Android 模拟器
+
+```bash
+# 列出已创建的 AVD
+flutter emulators
+
+# 启动指定 AVD（用上面的 id，如 emulator-5554）
+flutter emulators --launch emulator-5554
+
+# 或用 Android SDK 自带命令
+emulator -avd Pixel_7_API_34
+```
+
+#### 4. 在模拟器上运行 App
+
+```bash
+# 自动选择已启动的模拟器运行
+flutter run
+
+# 指定设备运行（用 flutter devices 列出的 id）
+flutter run -d "iPhone 16 Pro"
+flutter run -d emulator-5554
+flutter run -d C94642E9-D87B-4462-8048-07755E79F275
+
+# 指定设备 + 覆盖后端地址（iOS 模拟器访问宿主机）
+flutter run -d "iPhone 16 Pro" --dart-define=X_PAN_API_BASE_URL=http://localhost:8081
+
+# Android 模拟器访问宿主机需用 10.0.2.2
+flutter run -d emulator-5554 --dart-define=X_PAN_API_BASE_URL=http://10.0.2.2:8081
+```
+
+#### 5. 关闭模拟器
+
+```bash
+# iOS
+xcrun simctl shutdown "iPhone 16 Pro"
+
+# Android
+adb emu kill
+```
+
 ## 已实现
 
 - 登录 / 注册 / 退出登录

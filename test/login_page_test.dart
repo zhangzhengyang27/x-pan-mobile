@@ -55,6 +55,13 @@ Widget _wrap(ProviderContainer container) {
   );
 }
 
+/// 设置为移动端竖屏视口（默认 800x600 容不下登录页全部内容）
+void _setMobileViewport(WidgetTester tester) {
+  tester.view.devicePixelRatio = 3.0;
+  tester.view.physicalSize = const Size(1290, 2796); // 逻辑尺寸 430x932
+  addTearDown(tester.view.reset);
+}
+
 void main() {
   late FakeAuthNotifier fakeAuth;
 
@@ -71,11 +78,12 @@ void main() {
   }
 
   testWidgets('渲染登录页关键元素', (tester) async {
+    _setMobileViewport(tester);
     final container = makeContainer();
     await tester.pumpWidget(_wrap(container));
 
     expect(find.text('X Pan'), findsOneWidget);
-    expect(find.text('个人分布式存储'), findsOneWidget);
+    expect(find.textContaining('个人分布式存储'), findsOneWidget);
     expect(find.text('用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '登录'), findsOneWidget);
@@ -86,6 +94,7 @@ void main() {
   });
 
   testWidgets('空用户名/密码时点击登录不调用 login', (tester) async {
+    _setMobileViewport(tester);
     final container = makeContainer();
     await tester.pumpWidget(_wrap(container));
 
@@ -98,6 +107,7 @@ void main() {
   });
 
   testWidgets('填写表单后登录调用 login 并携带参数', (tester) async {
+    _setMobileViewport(tester);
     final container = makeContainer();
     await tester.pumpWidget(_wrap(container));
 
@@ -114,6 +124,7 @@ void main() {
   });
 
   testWidgets('登录失败时显示错误 SnackBar', (tester) async {
+    _setMobileViewport(tester);
     fakeAuth.shouldFail = true;
     final container = makeContainer();
     await tester.pumpWidget(_wrap(container));
@@ -131,6 +142,7 @@ void main() {
   });
 
   testWidgets('密码可见性切换', (tester) async {
+    _setMobileViewport(tester);
     final container = makeContainer();
     await tester.pumpWidget(_wrap(container));
 
@@ -152,6 +164,7 @@ void main() {
   });
 
   testWidgets('点击注册跳转注册页', (tester) async {
+    _setMobileViewport(tester);
     final container = makeContainer();
     await tester.pumpWidget(_wrap(container));
 

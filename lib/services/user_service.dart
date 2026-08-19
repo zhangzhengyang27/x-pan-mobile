@@ -31,15 +31,18 @@ class UserService {
   final HttpClient _http = HttpClient.instance;
 
   /// 登录
-  Future<UserInfo> login({
+  ///
+  /// 后端返回 data 为 JWT token 字符串，调用方需自行保存该 token，
+  /// 随后通过 [info] 拉取用户信息。
+  Future<String> login({
     required String username,
     required String password,
   }) {
-    return _http.request<UserInfo>(
+    return _http.request<String>(
       '/user/login',
       method: 'POST',
       data: {'username': username, 'password': password},
-      dataDecoder: (json) => UserInfo.fromJson(json as Map<String, dynamic>),
+      dataDecoder: (json) => json as String,
     );
   }
 
@@ -163,6 +166,8 @@ class FileService {
   }
 
   /// 新建文件夹
+  ///
+  /// 后端参数名为 `folderName`（不是 `filename`，那是文件重命名字段）。
   Future<dynamic> createFolder({
     required String parentId,
     required String filename,
@@ -170,7 +175,7 @@ class FileService {
     return _http.request<dynamic>(
       '/file/folder',
       method: 'POST',
-      data: {'parentId': parentId, 'filename': filename},
+      data: {'parentId': parentId, 'folderName': filename},
     );
   }
 

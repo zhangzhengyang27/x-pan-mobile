@@ -49,9 +49,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// 登录
+  ///
+  /// 登录接口返回的是 JWT token，先保存 token，再拉取用户信息。
+  /// 若拉取用户信息失败，回滚已写入的 token，避免本地残留孤儿 token。
   Future<void> login(String username, String password) async {
-    final user = await _userService.login(username: username, password: password);
-    state = AuthState(status: AuthStatus.authenticated, user: user);
+    final token =
+        await _userService.login(username: username, password: password);
+    await TokenStorage.setToken(token);
+    try {
+      final user = await _userService.info();
+      state = AuthState(status: AuthStatus.authenticated, user: user);
+    } catch (e) {
+      await TokenStorage.clearToken();
+      rethrow;
+    }
   }
 
   /// 退出登录

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/app_tokens.dart';
 import '../services/offline_service.dart';
+import '../widgets/app_card.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/responsive.dart';
+import '../widgets/skeleton.dart';
 
 /// 离线下载页
 class OfflinePage extends ConsumerStatefulWidget {
@@ -56,7 +60,10 @@ class _OfflinePageState extends ConsumerState<OfflinePage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, urlCtrl.text.trim()),
               child: const Text('创建'),
@@ -103,85 +110,176 @@ class _OfflinePageState extends ConsumerState<OfflinePage> {
   }
 
   Color _statusColor(int status) {
-    switch (status) {
-      case 2:
-        return Colors.green;
-      case 3:
-        return Colors.red;
-      case 1:
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
+    return switch (status) {
+      2 => AppTokens.success,
+      3 => AppTokens.error,
+      1 => AppTokens.info,
+      _ => AppTokens.neutral400,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
     return Scaffold(
       appBar: AppBar(title: const Text('离线下载')),
       floatingActionButton: FloatingActionButton(
         onPressed: _create,
+        backgroundColor: AppTokens.brandPrimary,
+        foregroundColor: AppTokens.neutral0,
         child: const Icon(Icons.add),
       ),
-      body: ResponsiveContent(child: _buildBody()),
+      body: ResponsiveContent(child: _buildBody(brightness)),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(Brightness b) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const FileListSkeleton(itemCount: 4);
     }
     if (_error != null) {
-      return Center(child: Text('加载失败：$_error'));
+      return EmptyState(
+        icon: Icons.error_outline,
+        title: '加载失败',
+        subtitle: _error,
+        actionLabel: '重试',
+        actionIcon: Icons.refresh,
+        onAction: _load,
+      );
     }
     if (_tasks.isEmpty) {
-      return const Center(child: Text('暂无离线任务'));
+      return const EmptyState(
+        icon: Icons.cloud_download_outlined,
+        title: '暂无离线任务',
+        subtitle: '点击右下角按钮，粘贴链接即可离线下载',
+      );
     }
     return ListView.builder(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.space16,
+        vertical: AppTokens.space12,
+      ),
       itemCount: _tasks.length,
-      itemBuilder: (ctx, i) {
-        final task = _tasks[i];
-        return ListTile(
-          title: Text(task.filename, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      itemBuilder: (ctx, i) => _buildTask(_tasks[i], b),
+    );
+  }
+
+  Widget _buildTask(OfflineTask task, Brightness b) {
+    final statusColor = _statusColor(task.status);
+    return AppCard(
+      margin: const EdgeInsets.symmetric(vertical: AppTokens.space8),
+      elevation: CardElevation.low,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(
-                task.statusText,
-                style: TextStyle(color: _statusColor(task.status), fontSize: 12),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                ),
+                child: Icon(
+                  task.status == 2
+                      ? Icons.check_circle_outline
+                      : task.status == 3
+                          ? Icons.error_outline
+                          : Icons.cloud_download_outlined,
+                  size: 20,
+                  color: statusColor,
+                ),
+              ),
+              const SizedBox(width: AppTokens.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.filename,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTokens.titleMedium.copyWith(
+                        color: AppTokens.textPrimary(b),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      task.statusText,
+                      style: AppTokens.bodySmall.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               if (task.status == 1)
-                LinearProgressIndicator(
-                  value: task.progress > 0 ? task.progress / 100 : null,
-                  minHeight: 4,
-                ),
-              if (task.errorMsg != null && task.errorMsg!.isNotEmpty)
-                Text(
-                  task.errorMsg!,
-                  style: const TextStyle(color: Colors.red, fontSize: 11),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-            ],
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (task.status == 1)
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: Icon(
+                    Icons.close,
+                    size: 20,
+                    color: AppTokens.textTertiary(b),
+                  ),
                   tooltip: '取消',
                   onPressed: () => _cancel(task),
                 ),
               IconButton(
-                icon: const Icon(Icons.delete_outline),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 20,
+                  color: AppTokens.error,
+                ),
                 tooltip: '删除',
                 onPressed: () => _delete(task),
               ),
             ],
           ),
-        );
-      },
+          if (task.status == 1) ...[
+            const SizedBox(height: AppTokens.space12),
+            _progressBar(task.progress, b),
+          ],
+          if (task.errorMsg != null && task.errorMsg!.isNotEmpty) ...[
+            const SizedBox(height: AppTokens.space8),
+            Text(
+              task.errorMsg!,
+              style: AppTokens.labelSmall.copyWith(color: AppTokens.error),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 渐变进度条
+  Widget _progressBar(num progress, Brightness b) {
+    final ratio = progress > 0 ? (progress / 100).clamp(0.0, 1.0) : 0.0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+      child: Stack(
+        children: [
+          Container(
+            height: 6,
+            color: AppTokens.divider(b).withValues(alpha: 0.5),
+          ),
+          if (ratio > 0)
+            FractionallySizedBox(
+              widthFactor: ratio,
+              child: Container(
+                height: 6,
+                decoration: const BoxDecoration(
+                  gradient: AppTokens.brandGradient,
+                  borderRadius: BorderRadius.all(
+                    Radius.circular(AppTokens.radiusFull),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -120,20 +120,27 @@ class _TagDialogState extends State<TagDialog> {
                 child: Center(child: Text('暂无标签')),
               )
             else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final tag in _tags)
-                    InputChip(
-                      label: Text(tag.tagName),
-                      avatar: tag.isAuto
-                          ? Icon(Icons.auto_awesome,
-                              size: 16, color: scheme.primary)
-                          : null,
-                      onDeleted: () => _removeTag(tag),
-                    ),
-                ],
+              // 标签可能很多（手动/自动打标累积），限定高度并允许滚动，
+              // 避免 Wrap 在 AlertDialog 内无限增高导致 RenderFlex 溢出。
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tag in _tags)
+                        InputChip(
+                          label: Text(tag.tagName),
+                          avatar: tag.isAuto
+                              ? Icon(Icons.auto_awesome,
+                                  size: 16, color: scheme.primary)
+                              : null,
+                          onDeleted: () => _removeTag(tag),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             const SizedBox(height: 16),
             Row(

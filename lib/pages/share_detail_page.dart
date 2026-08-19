@@ -3,11 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/network/http_client.dart';
 import '../core/storage/token_storage.dart';
+import '../core/theme/app_tokens.dart';
 import '../models/file_vo.dart';
 import '../services/share_service.dart';
 import '../utils/format.dart';
+import '../widgets/app_list_item.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/file_type_icon.dart';
 import '../widgets/folder_picker_dialog.dart';
 import '../widgets/responsive.dart';
+import '../widgets/skeleton.dart';
 
 /// 分享详情页
 ///
@@ -78,24 +83,32 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
   /// 提取码验证
   Future<void> _verifyCode() async {
     final ctrl = TextEditingController();
-    final code = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('请输入提取码'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: '提取码'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('确定'),
+    final String? code;
+    try {
+      code = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('请输入提取码'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '提取码'),
           ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
+    }
     if (code == null || code.isEmpty) return;
 
     try {
@@ -164,114 +177,193 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('分享详情')),
       body: ResponsiveContent(child: _buildBody()),
-      floatingActionButton: _detail != null
-          ? FloatingActionButton.extended(
-              onPressed: _save,
-              icon: const Icon(Icons.save_alt),
-              label: const Text('保存到网盘'),
-            )
-          : null,
+      bottomNavigationBar: _detail != null ? _buildSaveBar() : null,
+    );
+  }
+
+  /// 底部“保存到我的网盘”按钮（品牌光晕）
+  Widget _buildSaveBar() {
+    final brightness = Theme.of(context).brightness;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            boxShadow: AppTokens.shadowBrand(brightness),
+          ),
+          child: FilledButton.icon(
+            onPressed: _save,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+              backgroundColor: AppTokens.brandPrimary,
+            ),
+            icon: const Icon(Icons.save_alt),
+            label: Text(
+              _selectedIds.isEmpty
+                  ? '保存到我的网盘'
+                  : '保存到我的网盘（${_selectedIds.length}）',
+              style: AppTokens.labelLarge,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildBody() {
+    final brightness = Theme.of(context).brightness;
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const FileListSkeleton(itemCount: 6);
     }
     if (_error != null) {
-      return Center(child: Text('加载失败：$_error'));
+      return EmptyState(
+        icon: Icons.cloud_off,
+        title: '加载失败',
+        subtitle: _error,
+        actionLabel: '重试',
+        actionIcon: Icons.refresh,
+        onAction: _init,
+      );
     }
     if (_needCode) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock_outline, size: 56),
-            const SizedBox(height: 16),
-            const Text('该分享需要提取码'),
-            const SizedBox(height: 24),
-            FilledButton(onPressed: _verifyCode, child: const Text('输入提取码')),
-          ],
+        child: EmptyState(
+          icon: Icons.lock_outline,
+          title: '该分享需要提取码',
+          subtitle: '输入提取码后即可查看分享内容',
+          actionLabel: '输入提取码',
+          onAction: _verifyCode,
         ),
       );
     }
     if (_detail == null) {
-      return const Center(child: Text('暂无内容'));
+      return const EmptyState(
+        icon: Icons.link_off,
+        title: '暂无内容',
+        subtitle: '分享可能已失效',
+      );
     }
 
     final detail = _detail!;
     return ListView(
       children: [
-        // 分享头部信息
+        // 渐变头部：分享名 + 分享者 + 创建时间
         Container(
-          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(gradient: AppTokens.brandGradient),
+          padding: const EdgeInsets.all(AppTokens.space20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                detail.shareName,
+                style: AppTokens.headlineMedium.copyWith(
+                  color: Colors.white,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: AppTokens.space12),
               Row(
                 children: [
                   CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
                     child: Text(
                       detail.shareUserInfo.username.isNotEmpty
                           ? detail.shareUserInfo.username[0]
                           : '?',
+                      style: AppTokens.bodySmall.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          detail.shareUserInfo.username,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        Text(
-                          '分享于 ${detail.createTime}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                  const SizedBox(width: AppTokens.space8),
+                  Text(
+                    detail.shareUserInfo.username,
+                    style: AppTokens.bodyMedium.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: AppTokens.space8),
+                  Text(
+                    '分享于 ${detail.createTime}',
+                    style: AppTokens.bodySmall.copyWith(
+                      color: Colors.white70,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                detail.shareName,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
             ],
           ),
         ),
-        const Divider(height: 1),
         // 文件列表（多选）
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppTokens.space12,
+            AppTokens.space12,
+            AppTokens.space12,
+            AppTokens.space4,
+          ),
+          child: Text(
+            '共 ${detail.files.length} 个文件，点击选择后保存',
+            style: AppTokens.bodySmall.copyWith(
+              color: AppTokens.textSecondary(brightness),
+            ),
+          ),
+        ),
         ...detail.files.map((file) => _buildFileTile(file)),
       ],
     );
   }
 
   Widget _buildFileTile(FileVO file) {
+    final brightness = Theme.of(context).brightness;
     final selected = _selectedIds.contains(file.fileId);
-    return ListTile(
+    return AppListItem(
       selected: selected,
-      selectedTileColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-      leading: Icon(
-        selected ? Icons.check_circle : Icons.radio_button_unchecked,
-        color: selected
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.outline,
-      ),
-      title: Text(file.filename, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        file.isFolder
-            ? '文件夹'
-            : file.fileSizeDesc ?? translateFileSize(parseFileSize(file.fileSize)),
-        style: const TextStyle(fontSize: 12),
-      ),
       onTap: () => _toggleSelect(file),
+      child: Row(
+        children: [
+          Icon(
+            selected ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: selected
+                ? AppTokens.brandPrimary
+                : AppTokens.textTertiary(brightness),
+          ),
+          const SizedBox(width: AppTokens.space12),
+          FileTypeIcon(type: file.fileType),
+          const SizedBox(width: AppTokens.space12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  file.filename,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTokens.bodyLarge.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  file.isFolder
+                      ? '文件夹'
+                      : file.fileSizeDesc ??
+                          translateFileSize(parseFileSize(file.fileSize)),
+                  style: AppTokens.bodySmall.copyWith(
+                    color: AppTokens.textSecondary(brightness),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

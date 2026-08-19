@@ -5,8 +5,11 @@ import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/app_tokens.dart';
 import '../models/file_vo.dart';
 import '../services/download_service.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/skeleton.dart';
 
 /// XMind 思维导图预览页
 ///
@@ -167,20 +170,23 @@ class _XmindPreviewPageState extends ConsumerState<XmindPreviewPage> {
   }
 
   Widget _buildBody() {
+    final brightness = Theme.of(context).brightness;
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const FileListSkeleton(itemCount: 6);
     }
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('解析失败：$_error', textAlign: TextAlign.center),
-        ),
+      return EmptyState(
+        icon: Icons.error_outline,
+        title: '解析失败',
+        subtitle: _error,
       );
     }
     final root = _root;
     if (root == null) {
-      return const Center(child: Text('内容为空'));
+      return const EmptyState(
+        icon: Icons.account_tree_outlined,
+        title: '内容为空',
+      );
     }
 
     return Column(
@@ -188,36 +194,44 @@ class _XmindPreviewPageState extends ConsumerState<XmindPreviewPage> {
         // 头部
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.space16,
+            vertical: AppTokens.space12,
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                _sheetTitle,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+              Flexible(
+                child: Text(
+                  _sheetTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTokens.titleMedium.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                  ),
+                ),
               ),
               Text(
                 '${root.totalNodes} 个主题',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                style: AppTokens.bodySmall.copyWith(
+                  color: AppTokens.textSecondary(brightness),
                 ),
               ),
             ],
           ),
         ),
-        const Divider(height: 1),
+        Container(height: 1, color: AppTokens.divider(brightness)),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: _buildNode(root, 0),
+            padding: const EdgeInsets.all(AppTokens.space16),
+            child: _buildNode(root, 0, brightness),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildNode(TopicNode node, int depth) {
+  Widget _buildNode(TopicNode node, int depth, Brightness b) {
     final isCollapsed = _collapsed.contains(node.id);
     final hasChildren = node.children.isNotEmpty;
 
@@ -226,13 +240,13 @@ class _XmindPreviewPageState extends ConsumerState<XmindPreviewPage> {
       children: [
         InkWell(
           onTap: hasChildren ? () => _toggle(node.id) : null,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AppTokens.radiusSm),
           child: Container(
             padding: EdgeInsets.only(
               left: depth * 20.0,
               top: 6,
               bottom: 6,
-              right: 8,
+              right: AppTokens.space8,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -243,17 +257,19 @@ class _XmindPreviewPageState extends ConsumerState<XmindPreviewPage> {
                     size: 18,
                     color: node.branchColor != null
                         ? _parseColor(node.branchColor!)
-                        : Theme.of(context).colorScheme.primary,
+                        : AppTokens.brandPrimary,
                   )
                 else
                   const SizedBox(width: 18),
-                const SizedBox(width: 4),
+                const SizedBox(width: AppTokens.space4),
                 Flexible(
                   child: Text(
                     node.title,
-                    style: TextStyle(
-                      fontSize: depth == 0 ? 16 : 14,
-                      fontWeight: depth == 0 ? FontWeight.w700 : FontWeight.normal,
+                    style: (depth == 0
+                            ? AppTokens.titleLarge
+                            : AppTokens.bodyMedium)
+                        .copyWith(
+                      color: AppTokens.textPrimary(b),
                     ),
                   ),
                 ),
@@ -262,7 +278,7 @@ class _XmindPreviewPageState extends ConsumerState<XmindPreviewPage> {
           ),
         ),
         if (hasChildren && !isCollapsed)
-          for (final child in node.children) _buildNode(child, depth + 1),
+          for (final child in node.children) _buildNode(child, depth + 1, b),
       ],
     );
   }

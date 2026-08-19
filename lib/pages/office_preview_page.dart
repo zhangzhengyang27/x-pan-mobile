@@ -6,9 +6,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/network/http_client.dart';
+import '../core/theme/app_tokens.dart';
 import '../models/file_vo.dart';
 import '../services/preview_service.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/pdf_preview_view.dart';
+import '../widgets/skeleton.dart';
 
 /// Office 文档预览页
 ///
@@ -156,23 +159,13 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('文档转换中，请稍候…'),
-          ],
-        ),
-      );
+      return const _OfficeSkeleton();
     }
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('预览失败：$_error', textAlign: TextAlign.center),
-        ),
+      return EmptyState(
+        icon: Icons.error_outline,
+        title: '预览失败',
+        subtitle: _error,
       );
     }
     // 桌面端：pdfx 渲染 PDF 直链
@@ -181,5 +174,44 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
     }
     // 移动端：WebView
     return WebViewWidget(controller: _controller!);
+  }
+}
+
+/// Office 转换中骨架屏
+class _OfficeSkeleton extends StatelessWidget {
+  const _OfficeSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    const widths = <double>[0.7, 0.95, 0.88, 0.92, 0.6, 0.9, 0.82];
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final w in widths) ...[
+              FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: w,
+                child: const SkeletonBox(height: 12),
+              ),
+              const SizedBox(height: AppTokens.space12),
+            ],
+            const SizedBox(height: AppTokens.space24),
+            Center(
+              child: Text(
+                '文档转换中，请稍候…',
+                style: AppTokens.bodySmall.copyWith(
+                  color: AppTokens.textSecondary(brightness),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

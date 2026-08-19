@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/app_tokens.dart';
 import '../models/file_version.dart';
 import '../services/user_service.dart';
 import '../utils/format.dart';
+import '../widgets/app_card.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/responsive.dart';
+import '../widgets/skeleton.dart';
 
 /// 文件版本历史页
 class VersionHistoryPage extends ConsumerStatefulWidget {
@@ -50,7 +54,10 @@ class _VersionHistoryPageState extends ConsumerState<VersionHistoryPage> {
         title: const Text('回滚版本'),
         content: Text('确定回滚到版本 V${version.versionNumber} 吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('回滚'),
@@ -78,11 +85,12 @@ class _VersionHistoryPageState extends ConsumerState<VersionHistoryPage> {
         title: const Text('删除版本'),
         content: Text('确定删除版本 V${version.versionNumber} 吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppTokens.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -116,75 +124,176 @@ class _VersionHistoryPageState extends ConsumerState<VersionHistoryPage> {
   }
 
   Widget _buildBody() {
+    final brightness = Theme.of(context).brightness;
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const FileListSkeleton(itemCount: 4);
     }
     if (_error != null) {
-      return Center(child: Text('加载失败：$_error'));
+      return EmptyState(
+        icon: Icons.error_outline,
+        title: '加载失败',
+        subtitle: _error,
+        actionLabel: '重试',
+        actionIcon: Icons.refresh,
+        onAction: _load,
+      );
     }
     if (_versions.isEmpty) {
-      return const Center(child: Text('暂无版本记录'));
+      return const EmptyState(
+        icon: Icons.history_outlined,
+        title: '暂无版本记录',
+      );
     }
 
+    // 时间轴：左侧竖线 + 圆点节点，右侧版本卡片
     return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.space20,
+        AppTokens.space16,
+        AppTokens.space16,
+        AppTokens.space24,
+      ),
       itemCount: _versions.length,
-      itemBuilder: (ctx, i) {
-        final version = _versions[i];
-        return ListTile(
-          leading: CircleAvatar(
-            child: Text('V${version.versionNumber}'),
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  version.filename,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (version.current)
+      itemBuilder: (ctx, i) =>
+          _buildTimelineItem(_versions[i], i, brightness),
+    );
+  }
+
+  Widget _buildTimelineItem(FileVersion version, int index, Brightness b) {
+    final isLast = index == _versions.length - 1;
+    final isCurrent = version.current;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 时间轴节点 + 竖线
+          SizedBox(
+            width: 20,
+            child: Column(
+              children: [
+                const SizedBox(height: AppTokens.space20),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  width: 12,
+                  height: 12,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '当前',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                    color: isCurrent ? AppTokens.brandPrimary : b == Brightness.dark
+                        ? AppTokens.darkSurface
+                        : AppTokens.neutral0,
+                    border: Border.all(
+                      color: isCurrent
+                          ? AppTokens.brandPrimary
+                          : AppTokens.neutral300,
+                      width: 2,
                     ),
                   ),
                 ),
-            ],
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: AppTokens.divider(b),
+                    ),
+                  ),
+              ],
+            ),
           ),
-          subtitle: Text(
-            '${version.operationText} · '
-            '${translateFileSize(parseFileSize(version.fileSize))} · '
-            '${version.createTime}',
-            style: const TextStyle(fontSize: 12),
-          ),
-          trailing: PopupMenuButton<String>(
-            onSelected: (v) async {
-              if (v == 'rollback') await _rollback(version);
-              if (v == 'delete') await _deleteVersion(version);
-            },
-            itemBuilder: (_) => [
-              if (!version.current)
-                const PopupMenuItem(
-                  value: 'rollback',
-                  child: Text('回滚到此版本'),
-                ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Text('删除此版本'),
+          const SizedBox(width: AppTokens.space12),
+          // 版本卡片
+          Expanded(
+            child: AppCard(
+              margin: const EdgeInsets.only(bottom: AppTokens.space16),
+              elevation: CardElevation.low,
+              padding: const EdgeInsets.all(AppTokens.space14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      // 版本号徽章
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppTokens.space8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isCurrent
+                              ? AppTokens.brandPrimary
+                              : AppTokens.brandPrimary
+                                  .withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(
+                            AppTokens.radiusFull,
+                          ),
+                        ),
+                        child: Text(
+                          'V${version.versionNumber}',
+                          style: AppTokens.labelSmall.copyWith(
+                            color: isCurrent
+                                ? AppTokens.neutral0
+                                : AppTokens.brandPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppTokens.space8),
+                      if (isCurrent)
+                        Text(
+                          '当前版本',
+                          style: AppTokens.labelSmall.copyWith(
+                            color: AppTokens.brandPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      const Spacer(),
+                      PopupMenuButton<String>(
+                        icon: Icon(
+                          Icons.more_horiz,
+                          size: 20,
+                          color: AppTokens.textTertiary(b),
+                        ),
+                        onSelected: (v) async {
+                          if (v == 'rollback') await _rollback(version);
+                          if (v == 'delete') await _deleteVersion(version);
+                        },
+                        itemBuilder: (_) => [
+                          if (!version.current)
+                            const PopupMenuItem(
+                              value: 'rollback',
+                              child: Text('回滚到此版本'),
+                            ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('删除此版本'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppTokens.space8),
+                  Text(
+                    version.filename,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTokens.titleMedium.copyWith(
+                      color: AppTokens.textPrimary(b),
+                    ),
+                  ),
+                  const SizedBox(height: AppTokens.space4),
+                  Text(
+                    '${version.operationText} · '
+                    '${translateFileSize(parseFileSize(version.fileSize))} · '
+                    '${version.createTime}',
+                    style: AppTokens.bodySmall.copyWith(
+                      color: AppTokens.textSecondary(b),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
