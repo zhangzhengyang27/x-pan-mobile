@@ -3,59 +3,115 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../providers/upload_provider.dart';
+import '../services/offline_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/responsive.dart';
+import '../widgets/skeleton.dart';
 
-/// 上传任务面板
-class UploadTaskPage extends ConsumerWidget {
-  const UploadTaskPage({super.key});
+/// 传输中心（底部 Tab 的「传输」）
+///
+/// 顶部 TabBar（移到图标栏下方）拆分为「上传任务 / 离线下载」。
+class TransferPage extends ConsumerStatefulWidget {
+  const TransferPage({super.key});
+
+  @override
+  ConsumerState<TransferPage> createState() => _TransferPageState();
+}
+
+class _TransferPageState extends ConsumerState<TransferPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('传输中心'),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppTokens.brandPrimary,
+          labelColor: AppTokens.brandPrimary,
+          unselectedLabelColor: AppTokens.textSecondary(brightness),
+          tabs: const [
+            Tab(text: '上传任务'),
+            Tab(text: '离线下载'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _UploadTasksView(),
+          _OfflineTasksView(),
+        ],
+      ),
+    );
+  }
+}
+
+/// 上传任务列表
+class _UploadTasksView extends ConsumerWidget {
+  const _UploadTasksView();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final queue = ref.watch(uploadManagerProvider);
     final manager = ref.read(uploadManagerProvider.notifier);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('上传任务'),
-        actions: [
-          if (queue.tasks.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.clear_all),
-              tooltip: '清除已完成',
-              onPressed: () {
-                for (final t in queue.tasks) {
-                  if (t.status == UploadStatus.completed ||
-                      t.status == UploadStatus.cancelled ||
-                      t.status == UploadStatus.failed) {
-                    manager.remove(t.id);
-                  }
-                }
-              },
+    return ResponsiveContent(
+      child: queue.tasks.isEmpty
+          ? const EmptyState(
+              icon: Icons.cloud_upload_outlined,
+              title: '暂无上传任务',
+              subtitle: '在网盘中选择文件即可开始上传',
+            )
+          : Column(
+              children: [
+                if (queue.tasks.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.clear_all, size: 18),
+                      label: const Text('清除已完成'),
+                      onPressed: () {
+                        for (final t in queue.tasks) {
+                          if (t.status == UploadStatus.completed ||
+                              t.status == UploadStatus.cancelled ||
+                              t.status == UploadStatus.failed) {
+                            manager.remove(t.id);
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(AppTokens.space16),
+                    itemCount: queue.tasks.length,
+                    itemBuilder: (ctx, i) =>
+                        _buildUploadTask(context, queue.tasks[i], manager),
+                  ),
+                ),
+              ],
             ),
-        ],
-      ),
-      body: ResponsiveContent(
-        child: queue.tasks.isEmpty
-            ? const EmptyState(
-                icon: Icons.cloud_upload_outlined,
-                title: '暂无上传任务',
-                subtitle: '在网盘中选择文件即可开始上传',
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(AppTokens.space16),
-                itemCount: queue.tasks.length,
-                itemBuilder: (ctx, i) {
-                  final task = queue.tasks[i];
-                  return _buildTask(context, task, manager);
-                },
-              ),
-      ),
     );
   }
 
-  Widget _buildTask(
+  Widget _buildUploadTask(
     BuildContext context,
     UploadTask task,
     UploadManager manager,
@@ -89,103 +145,300 @@ class UploadTaskPage extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: AppTokens.space8),
-              // 状态标签
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTokens.space8,
-                  vertical: AppTokens.space3,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius:
-                      BorderRadius.circular(AppTokens.radiusFull),
-                ),
-                child: Text(
-                  label,
-                  style: AppTokens.labelSmall.copyWith(color: color),
+              Text(
+                label,
+                style: AppTokens.bodySmall.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+              if (task.status == UploadStatus.uploading ||
+                  task.status == UploadStatus.waiting ||
+                  task.status == UploadStatus.paused)
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: '取消',
+                  onPressed: () => manager.cancel(task.id),
+                ),
             ],
           ),
           const SizedBox(height: AppTokens.space8),
-          Text(
-            task.error == null
-                ? task.statusText
-                : '${task.statusText}：${task.error}',
-            style: AppTokens.bodySmall.copyWith(
-              color: task.error == null
-                  ? AppTokens.textSecondary(brightness)
-                  : AppTokens.error,
+          LinearProgressIndicator(
+            value: task.progress,
+            minHeight: 4,
+            backgroundColor: AppTokens.divider(brightness),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 离线下载列表（复用 OfflineService）
+class _OfflineTasksView extends ConsumerStatefulWidget {
+  const _OfflineTasksView();
+
+  @override
+  ConsumerState<_OfflineTasksView> createState() => _OfflineTasksViewState();
+}
+
+class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
+  List<OfflineTask> _tasks = const [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final tasks = await OfflineService.instance.list();
+      if (mounted) setState(() => _tasks = tasks);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _create() async {
+    final urlCtrl = TextEditingController();
+    final String? url;
+    try {
+      url = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('新建离线下载'),
+          content: TextField(
+            controller: urlCtrl,
+            autofocus: true,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              labelText: '下载链接',
+              hintText: 'http(s):// 或磁力链接',
             ),
           ),
-          if (task.status == UploadStatus.uploading ||
-              task.status == UploadStatus.paused) ...[
-            const SizedBox(height: AppTokens.space12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AppTokens.radiusFull),
-              child: Stack(
-                children: [
-                  Container(
-                    height: 6,
-                    color:
-                        AppTokens.divider(brightness).withValues(alpha: 0.5),
-                  ),
-                  FractionallySizedBox(
-                    widthFactor: task.progress.clamp(0.0, 1.0),
-                    child: Container(
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        gradient: AppTokens.dataGradient,
-                        borderRadius: BorderRadius.horizontal(
-                          left: Radius.circular(999),
-                        ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, urlCtrl.text.trim()),
+              child: const Text('创建'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      urlCtrl.dispose();
+    }
+    if (url == null || url.isEmpty) return;
+    try {
+      await OfflineService.instance.create(url: url);
+      _toast('已创建离线任务');
+      await _load();
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
+  Future<void> _cancel(OfflineTask task) async {
+    try {
+      await OfflineService.instance.cancel(task.id);
+      _toast('已取消');
+      await _load();
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
+  Future<void> _delete(OfflineTask task) async {
+    try {
+      await OfflineService.instance.delete(task.id);
+      _toast('已删除');
+      await _load();
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Color _statusColor(int status) {
+    return switch (status) {
+      2 => AppTokens.success,
+      3 => AppTokens.error,
+      1 => AppTokens.info,
+      _ => AppTokens.neutral400,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return ResponsiveContent(
+      child: Stack(
+        children: [
+          if (_loading)
+            const FileListSkeleton(itemCount: 4)
+          else if (_error != null)
+            EmptyState(
+              icon: Icons.error_outline,
+              title: '加载失败',
+              subtitle: _error,
+              actionLabel: '重试',
+              actionIcon: Icons.refresh,
+              onAction: _load,
+            )
+          else if (_tasks.isEmpty)
+            const EmptyState(
+              icon: Icons.cloud_download_outlined,
+              title: '暂无离线任务',
+              subtitle: '点击右下角按钮，粘贴链接即可离线下载',
+            )
+          else
+            ListView.builder(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTokens.space16,
+                vertical: AppTokens.space12,
+              ),
+              itemCount: _tasks.length,
+              itemBuilder: (ctx, i) => _buildTask(_tasks[i], brightness),
+            ),
+          Positioned(
+            right: AppTokens.space16,
+            bottom: AppTokens.space16,
+            child: FloatingActionButton(
+              onPressed: _create,
+              backgroundColor: AppTokens.brandPrimary,
+              foregroundColor: AppTokens.neutral0,
+              child: const Icon(Icons.add),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTask(OfflineTask task, Brightness b) {
+    final statusColor = _statusColor(task.status);
+    return AppCard(
+      margin: const EdgeInsets.symmetric(vertical: AppTokens.space8),
+      elevation: CardElevation.low,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                ),
+                child: Icon(
+                  task.status == 2
+                      ? Icons.check_circle_outline
+                      : task.status == 3
+                          ? Icons.error_outline
+                          : Icons.cloud_download_outlined,
+                  size: 20,
+                  color: statusColor,
+                ),
+              ),
+              const SizedBox(width: AppTokens.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.filename,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTokens.titleMedium.copyWith(
+                        color: AppTokens.textPrimary(b),
                       ),
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      task.statusText,
+                      style: AppTokens.bodySmall.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (task.status == 1)
+                IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    size: 20,
+                    color: AppTokens.textTertiary(b),
                   ),
-                ],
+                  tooltip: '取消',
+                  onPressed: () => _cancel(task),
+                ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 20),
+                color: AppTokens.error,
+                tooltip: '删除',
+                onPressed: () => _delete(task),
               ),
-            ),
-            const SizedBox(height: AppTokens.space4),
-            Text(
-              '${(task.progress * 100).toStringAsFixed(0)}%',
-              style: AppTokens.labelSmall.copyWith(
-                color: AppTokens.brandPrimary,
-              ),
-            ),
+            ],
+          ),
+          if (task.status == 1) ...[
+            const SizedBox(height: AppTokens.space12),
+            _progressBar(task.progress, b),
           ],
-          // 操作按钮
-          if (task.status == UploadStatus.uploading ||
-              task.status == UploadStatus.failed ||
-              task.status == UploadStatus.cancelled ||
-              task.status == UploadStatus.completed) ...[
+          if (task.errorMsg != null && task.errorMsg!.isNotEmpty) ...[
             const SizedBox(height: AppTokens.space8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (task.status == UploadStatus.uploading)
-                  TextButton.icon(
-                    onPressed: () => manager.cancel(task.id),
-                    icon: const Icon(Icons.close, size: 16),
-                    label: const Text('取消'),
-                  ),
-                if (task.status == UploadStatus.failed ||
-                    task.status == UploadStatus.cancelled)
-                  TextButton.icon(
-                    onPressed: () => manager.retry(task.id),
-                    icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('重试'),
-                  ),
-                if (task.status == UploadStatus.completed ||
-                    task.status == UploadStatus.cancelled ||
-                    task.status == UploadStatus.failed)
-                  TextButton.icon(
-                    onPressed: () => manager.remove(task.id),
-                    icon: const Icon(Icons.delete_outline, size: 16),
-                    label: const Text('移除'),
-                  ),
-              ],
+            Text(
+              task.errorMsg!,
+              style: AppTokens.labelSmall.copyWith(color: AppTokens.error),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _progressBar(num progress, Brightness b) {
+    final ratio = progress > 0 ? (progress / 100).clamp(0.0, 1.0) : 0.0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+      child: Stack(
+        children: [
+          Container(height: 6, color: AppTokens.divider(b).withValues(alpha: 0.5)),
+          if (ratio > 0)
+            FractionallySizedBox(
+              widthFactor: ratio,
+              child: Container(
+                height: 6,
+                decoration: const BoxDecoration(
+                  gradient: AppTokens.brandGradient,
+                  borderRadius: BorderRadius.all(
+                    Radius.circular(AppTokens.radiusFull),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

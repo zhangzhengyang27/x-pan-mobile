@@ -4,107 +4,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/storage/recent_storage.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../models/file_vo.dart';
-import '../../models/user_info.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/upload_provider.dart';
 import '../../providers/view_mode_provider.dart';
 import '../../services/favorite_service.dart';
 import '../../widgets/category_grid.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/file_type_icon.dart';
-import '../dashboard_page.dart';
 import '../file/category_files_page.dart';
 import '../notification_page.dart';
 import '../search_page.dart';
 import '../settings_page.dart';
 
-/// 首页容量卡（问候 + 进度条 + 去管理）
-class _StorageCard extends StatelessWidget {
-  const _StorageCard({required this.user});
-
-  final UserInfo user;
-
-  String _humanize(int bytes) {
-    if (bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var size = bytes.toDouble();
-    var i = 0;
-    while (size >= 1024 && i < units.length - 1) {
-      size /= 1024;
-      i++;
-    }
-    return '${size.toStringAsFixed(size >= 100 || i <= 1 ? 0 : 1)} ${units[i]}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final used = user.usedSize;
-    final total = user.totalSize;
-    final ratio = total > 0 ? (used / total).clamp(0.0, 1.0) : 0.0;
-
-    return Container(
-      margin: const EdgeInsets.all(AppTokens.space16),
-      padding: const EdgeInsets.all(AppTokens.space20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF3366FF), Color(0xFF165DFF)],
-        ),
-        boxShadow: AppTokens.shadowBrand(brightness),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.cloud_done_outlined, color: Colors.white),
-              const SizedBox(width: AppTokens.space8),
-              Expanded(
-                child: Text(
-                  '网盘空间',
-                  style: AppTokens.bodyMedium.copyWith(color: Colors.white70),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context)
-                    .push(AppTokens.route(const DashboardPage())),
-                child: const Text(
-                  '空间管理 ›',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppTokens.space12),
-          Text(
-            '已用 ${_humanize(used)} / 共 ${_humanize(total)}',
-            style: AppTokens.titleMedium.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: AppTokens.space12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppTokens.radiusFull),
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: 8,
-              backgroundColor: Colors.white24,
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 聚合首页（底部 Tab 的「首页」）
 ///
-/// 内容：容量卡 + 分类直达 + 最近/收藏/下载三 Tab。
+/// 内容：分类直达 + 最近/收藏/下载三 Tab。
 class HomeDashboard extends ConsumerStatefulWidget {
   const HomeDashboard({super.key});
 
@@ -146,7 +59,6 @@ class _HomeDashboardState extends ConsumerState<HomeDashboard>
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final user = ref.watch(authProvider).user;
     final isGrid =
         ref.watch(fileViewModeProvider).viewMode == FileViewMode.grid;
 
@@ -177,7 +89,6 @@ class _HomeDashboardState extends ConsumerState<HomeDashboard>
       ),
       body: ListView(
         children: [
-          if (user != null) _StorageCard(user: user),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppTokens.space16),
             child: Text(

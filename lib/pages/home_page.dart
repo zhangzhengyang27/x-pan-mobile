@@ -52,10 +52,10 @@ import 'settings_page.dart';
 import 'share_page.dart';
 import 'text_preview_page.dart';
 import 'file/category_files_page.dart';
+import 'upload_task_page.dart';
 import '../providers/view_mode_provider.dart';
 import '../widgets/category_grid.dart';
 import '../widgets/view_options_sheet.dart';
-import 'upload_task_page.dart';
 import 'vault_page.dart';
 import 'version_history_page.dart';
 import 'video_preview_page.dart';
@@ -138,7 +138,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       resumeIdentifier: task.identifier,
     );
     _toast('已恢复上传');
-    _openPage(const UploadTaskPage());
+    _openPage(const TransferPage());
   }
 
   Future<void> _refresh() => ref.read(fileListProvider.notifier).refresh();
@@ -260,7 +260,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (added > 0) {
       _toast('已添加 $added 个文件到上传队列');
       // 打开上传任务面板
-      _openPage(const UploadTaskPage());
+      _openPage(const TransferPage());
     }
   }
 
@@ -915,7 +915,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       children: [
         const HomeDashboard(),
         mainBody,
-        const UploadTaskPage(),
+        const TransferPage(),
         const AIAssistantPage(),
         const ProfilePage(),
       ],
@@ -1063,7 +1063,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       2 => const FavoritePage(),
       3 => const SharePage(),
       4 => const OfflinePage(),
-      5 => const UploadTaskPage(),
+      5 => const TransferPage(),
       6 => const RecyclePage(),
       7 => const VaultPage(),
       8 => const AIAssistantPage(),
@@ -1100,7 +1100,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         HomeNavItem(
           icon: Icons.cloud_upload_outlined,
           title: '上传任务',
-          onTap: () => _openPage(const UploadTaskPage()),
+          onTap: () => _openPage(const TransferPage()),
         ),
         HomeNavItem(
           icon: Icons.cloud_download_outlined,
@@ -1212,23 +1212,6 @@ class _HomePageState extends ConsumerState<HomePage> {
           icon: const Icon(Icons.upload_file_outlined),
           tooltip: '上传',
           onPressed: _upload,
-        ),
-        PopupMenuButton<String>(
-          onSelected: (v) async {
-            if (v == 'newFolder') await _createFolder();
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(
-              value: 'newFolder',
-              child: Row(
-                children: [
-                  Icon(Icons.create_new_folder_outlined, size: 20),
-                  SizedBox(width: AppTokens.space12),
-                  Text('新建文件夹'),
-                ],
-              ),
-            ),
-          ],
         ),
       ],
     );
