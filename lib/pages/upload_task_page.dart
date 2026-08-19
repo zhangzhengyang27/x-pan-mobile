@@ -223,7 +223,7 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
             keyboardType: TextInputType.url,
             decoration: const InputDecoration(
               labelText: '下载链接',
-              hintText: 'http(s):// 或磁力链接',
+              hintText: 'http(s):// · 磁力/种子链接（云端自动解压与做种）',
             ),
           ),
           actions: [
@@ -276,15 +276,6 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Color _statusColor(int status) {
-    return switch (status) {
-      2 => AppTokens.success,
-      3 => AppTokens.error,
-      1 => AppTokens.info,
-      _ => AppTokens.neutral400,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
@@ -332,8 +323,19 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
     );
   }
 
+  IconData _taskIcon(int status) {
+    return switch (status) {
+      2 => Icons.check_circle_outline,
+      3 => Icons.error_outline,
+      5 => Icons.unarchive_outlined, // 云解压中
+      6 => Icons.hub_outlined, // 做种中
+      _ => Icons.cloud_download_outlined,
+    };
+  }
+
   Widget _buildTask(OfflineTask task, Brightness b) {
-    final statusColor = _statusColor(task.status);
+    final statusColor = task.statusColor(b);
+    final canCancel = task.isActive;
     return AppCard(
       margin: const EdgeInsets.symmetric(vertical: AppTokens.space8),
       elevation: CardElevation.low,
@@ -349,15 +351,7 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
                   color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                 ),
-                child: Icon(
-                  task.status == 2
-                      ? Icons.check_circle_outline
-                      : task.status == 3
-                          ? Icons.error_outline
-                          : Icons.cloud_download_outlined,
-                  size: 20,
-                  color: statusColor,
-                ),
+                child: Icon(_taskIcon(task.status), size: 20, color: statusColor),
               ),
               const SizedBox(width: AppTokens.space12),
               Expanded(
@@ -383,13 +377,9 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
                   ],
                 ),
               ),
-              if (task.status == 1)
+              if (canCancel)
                 IconButton(
-                  icon: Icon(
-                    Icons.close,
-                    size: 20,
-                    color: AppTokens.textTertiary(b),
-                  ),
+                  icon: Icon(Icons.close, size: 20, color: AppTokens.textTertiary(b)),
                   tooltip: '取消',
                   onPressed: () => _cancel(task),
                 ),
@@ -401,9 +391,46 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
               ),
             ],
           ),
-          if (task.status == 1) ...[
+          // 进度 / 状态信息行
+          if (task.status == 1 || task.status == 5) ...[
             const SizedBox(height: AppTokens.space12),
             _progressBar(task.progress, b),
+            const SizedBox(height: AppTokens.space8),
+            Text(
+              task.status == 5
+                  ? '云端解压中… ${(task.progress * 100).toInt()}%'
+                  : '${(task.progress * 100).toInt()}%  ·  ${_formatSize(task.downloadedSize)} / ${_formatSize(task.totalSize)}',
+              style: AppTokens.labelSmall.copyWith(
+                color: AppTokens.textSecondary(b),
+              ),
+            ),
+          ] else if (task.status == 6) ...[
+            const SizedBox(height: AppTokens.space12),
+            Row(
+              children: [
+                Icon(Icons.hub_outlined, size: 14, color: statusColor),
+                const SizedBox(width: 4),
+                Text(
+                  '做种 ${_formatSpeed(task.seedSpeed)} · 连接 ${task.peers} 个节点',
+                  style: AppTokens.labelSmall.copyWith(color: statusColor),
+                ),
+                const Spacer(),
+                Text(
+                  '保种中',
+                  style: AppTokens.labelSmall.copyWith(
+                    color: AppTokens.textSecondary(b),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (task.status == 0) ...[
+            const SizedBox(height: AppTokens.space12),
+            Text(
+              '已加入队列，等待开始',
+              style: AppTokens.labelSmall.copyWith(
+                color: AppTokens.textSecondary(b),
+              ),
+            ),
           ],
           if (task.errorMsg != null && task.errorMsg!.isNotEmpty) ...[
             const SizedBox(height: AppTokens.space8),
@@ -417,6 +444,23 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
         ],
       ),
     );
+  }
+
+  String _formatSize(num bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var i = 0;
+    double v = bytes.toDouble();
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    return '${v.toStringAsFixed(v >= 100 || i == 0 ? 0 : 1)} ${units[i]}';
+  }
+
+  String _formatSpeed(int bytesPerSec) {
+    if (bytesPerSec <= 0) return '0 B/s';
+    return '${_formatSize(bytesPerSec)}/s';
   }
 
   Widget _progressBar(num progress, Brightness b) {

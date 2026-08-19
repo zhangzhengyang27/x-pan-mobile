@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_config.dart';
-import '../core/storage/recent_storage.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/storage/upload_task_storage.dart';
 import '../models/file_vo.dart';
@@ -23,6 +22,7 @@ import '../services/llm_service.dart';
 import '../services/share_service.dart';
 import '../services/upload_service.dart';
 import '../services/vault_service.dart';
+import '../utils/file_open.dart';
 import '../utils/format.dart';
 import '../widgets/app_list_item.dart';
 import '../widgets/empty_state.dart';
@@ -32,25 +32,17 @@ import '../widgets/responsive.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/tag_dialog.dart';
 import 'ai_assistant_page.dart';
-import 'audio_preview_page.dart';
-import 'csv_preview_page.dart';
 import 'dashboard_page.dart';
-import 'dedup_page.dart';
 import 'favorite_page.dart';
 import 'home/home_components.dart';
 import 'home/home_dashboard.dart';
-import 'home/home_drawer_nav.dart';
-import 'image_preview_page.dart';
 import 'notification_page.dart';
 import 'offline_page.dart';
-import 'office_preview_page.dart';
-import 'pdf_preview_page.dart';
 import 'recent_page.dart';
 import 'recycle_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'share_page.dart';
-import 'text_preview_page.dart';
 import 'file/category_files_page.dart';
 import 'upload_task_page.dart';
 import '../providers/view_mode_provider.dart';
@@ -58,8 +50,6 @@ import '../widgets/category_grid.dart';
 import '../widgets/view_options_sheet.dart';
 import 'vault_page.dart';
 import 'version_history_page.dart';
-import 'video_preview_page.dart';
-import 'xmind_preview_page.dart';
 import 'profile_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -150,64 +140,13 @@ class _HomePageState extends ConsumerState<HomePage> {
       ref.read(fileListProvider.notifier).openFolder(file);
       return;
     }
-
-    // 记录最近访问
-    _recordRecent(file);
-
-    // xmind 思维导图（通过扩展名识别）
-    if (file.filename.toLowerCase().endsWith('.xmind')) {
-      Navigator.of(context).push(
-        AppTokens.route(XmindPreviewPage(file: file)),
-      );
-      return;
-    }
-
-    final route = switch (file.fileType) {
-      FileType.image => _buildImageRoute(file),
-      FileType.video => AppTokens.route(VideoPreviewPage(file: file)),
-      FileType.audio => AppTokens.route(AudioPreviewPage(file: file)),
-      FileType.pdf => AppTokens.route(PDFPreviewPage(file: file)),
-      FileType.csv => AppTokens.route(CsvPreviewPage(file: file)),
-      FileType.txt || FileType.code => AppTokens.route(TextPreviewPage(file: file)),
-      FileType.word || FileType.excel || FileType.ppt =>
-        AppTokens.route(OfficePreviewPage(file: file)),
-      _ => null,
-    };
-
-    if (route != null) {
-      Navigator.of(context).push(route);
-      return;
-    }
-    _download(file);
-  }
-
-  /// 记录最近访问（异步，不阻塞）
-  void _recordRecent(FileVO file) {
-    final now = DateTime.now();
-    final timeStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    RecentStorage.add(
-      RecentItem(
-        fileId: file.fileId,
-        filename: file.filename,
-        fileType: file.fileType.value,
-        visitTime: timeStr,
-      ),
-    );
-  }
-
-  Route<void> _buildImageRoute(FileVO file) {
-    final state = ref.read(fileListProvider);
-    final images =
-        state.files.where((f) => f.fileType == FileType.image).toList();
-    final index = images.indexWhere((f) => f.fileId == file.fileId);
-    return AppTokens.route(
-      ImagePreviewPage(
-        files: images,
-        initialIndex: index < 0 ? 0 : index,
-      ),
-    );
+    // 复用统一打开逻辑（含最近访问记录）；图片图集取当前列表内所有图片
+    final images = ref
+        .read(fileListProvider)
+        .files
+        .where((f) => f.fileType == FileType.image)
+        .toList();
+    openFileByType(context, file, images: images);
   }
 
   Future<void> _download(FileVO file) async {
@@ -875,7 +814,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         _initRoot();
       }
     });
-    final auth = ref.watch(authProvider);
     final fileState = ref.watch(fileListProvider);
     final notifier = ref.read(fileListProvider.notifier);
     final desktop = isDesktop(context);
@@ -907,7 +845,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       ],
     );
 
-    // 移动端底部 TabBar（首页/文件/传输/AI/我的）；抽屉保留作为完整功能入口
+    // 移动端底部 TabBar（首页/文件/传输/AI/我的）；完整功能已分散到各 Tab 与我的页
     final onFilesTab = _mobileTabIndex == 1;
     final brightness = Theme.of(context).brightness;
     final mobileTabStack = IndexedStack(
@@ -922,9 +860,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
 
     return Scaffold(
-      drawer: desktop
-          ? null
-          : Drawer(child: SafeArea(child: _buildDrawerNav(auth))),
       // 非文件页自带 AppBar，切换 Tab 时隐藏外层 AppBar
       appBar: desktop || onFilesTab ? _buildAppBar(notifier) : null,
       body: desktop
@@ -1073,81 +1008,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       _ => null,
     };
     if (page != null) _openPage(page);
-  }
-
-  /// 移动端抽屉导航（导航项在此定义，跳转逻辑集中管理）
-  Widget _buildDrawerNav(AuthState auth) {
-    return HomeDrawerNav(
-      username: auth.user?.username ?? '未登录',
-      usedSize: (auth.user?.usedSize ?? 0).toDouble(),
-      totalSize: (auth.user?.totalSize ?? 0).toDouble(),
-      fileItems: [
-        HomeNavItem(
-          icon: Icons.history,
-          title: '最近访问',
-          onTap: () => _openPage(const RecentPage()),
-        ),
-        HomeNavItem(
-          icon: Icons.star_outline,
-          title: '我的收藏',
-          onTap: () => _openPage(const FavoritePage()),
-        ),
-        HomeNavItem(
-          icon: Icons.share_outlined,
-          title: '我的分享',
-          onTap: () => _openPage(const SharePage()),
-        ),
-        HomeNavItem(
-          icon: Icons.cloud_upload_outlined,
-          title: '上传任务',
-          onTap: () => _openPage(const TransferPage()),
-        ),
-        HomeNavItem(
-          icon: Icons.cloud_download_outlined,
-          title: '离线下载',
-          onTap: () => _openPage(const OfflinePage()),
-        ),
-        HomeNavItem(
-          icon: Icons.delete_outline,
-          title: '回收站',
-          onTap: () => _openPage(const RecyclePage()),
-        ),
-      ],
-      toolItems: [
-        HomeNavItem(
-          icon: Icons.security,
-          title: '隐私保险箱',
-          onTap: () => _openPage(const VaultPage()),
-        ),
-        HomeNavItem(
-          icon: Icons.cleaning_services_outlined,
-          title: '文件去重',
-          onTap: () => _openPage(const DedupPage()),
-        ),
-        HomeNavItem(
-          icon: Icons.dashboard_outlined,
-          title: '存储统计',
-          onTap: () => _openPage(const DashboardPage()),
-        ),
-        HomeNavItem(
-          icon: Icons.auto_awesome,
-          title: 'AI 助手',
-          onTap: () => _openPage(const AIAssistantPage()),
-        ),
-      ],
-      accountItems: [
-        HomeNavItem(
-          icon: Icons.notifications_outlined,
-          title: '通知中心',
-          onTap: () => _openPage(const NotificationPage()),
-        ),
-        HomeNavItem(
-          icon: Icons.settings_outlined,
-          title: '设置',
-          onTap: () => _openPage(const SettingsPage()),
-        ),
-      ],
-    );
   }
 
   PreferredSizeWidget _buildAppBar(FileListNotifier notifier) {
