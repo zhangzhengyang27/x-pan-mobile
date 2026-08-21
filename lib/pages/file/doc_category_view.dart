@@ -4,6 +4,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../models/file_vo.dart';
 import '../../utils/file_open.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/file_timeline_view.dart';
 import '../../widgets/file_type_icon.dart';
 
 /// 文档分类视图：顶部子类型 Tab（全部/Word/Excel/PPT/PDF/文本）+ 时间轴列表
@@ -94,40 +95,17 @@ class _DocList extends StatelessWidget {
     if (files.isEmpty) {
       return const EmptyState(icon: Icons.description_outlined, title: '暂无文档');
     }
-    final groups = groupByTimeline(files);
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: AppTokens.space8),
-      itemCount: groups.length,
-      itemBuilder: (ctx, gi) {
-        final (label, files) = groups[gi];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppTokens.space16,
-                AppTokens.space16,
-                AppTokens.space16,
-                AppTokens.space4,
-              ),
-              child: Text(
-                label,
-                style: AppTokens.labelSmall.copyWith(
-                  color: AppTokens.textSecondary(
-                    Theme.of(context).brightness,
-                  ),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            for (final file in files)
-              _DocTile(
-                file: file,
-                onTap: () => openFileByType(context, file),
-              ),
-          ],
-        );
-      },
+    // smart 模式：今天/昨天/本周/本月/更早（与既有文档时间线一致）
+    return FileTimelineView(
+      files: files,
+      initialMode: TimelineMode.smart,
+      showGranularitySwitch: false,
+      emptyIcon: Icons.description_outlined,
+      emptyTitle: '暂无文档',
+      itemBuilder: (file) => _DocTile(
+        file: file,
+        onTap: () => openFileByType(context, file),
+      ),
     );
   }
 }

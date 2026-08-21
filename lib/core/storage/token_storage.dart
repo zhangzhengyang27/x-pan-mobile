@@ -9,6 +9,7 @@ class TokenStorage {
 
   static const String _loginTokenKey = 'login_token';
   static const String _shareTokenKey = 'share_token';
+  static const String _clientIdKey = 'client_id';
 
   // flutter_secure_storage 本身使用 Android Keystore / iOS Keychain 加密。
   // 不使用 encryptedSharedPreferences，避免要求 minSdk 23。
@@ -36,5 +37,18 @@ class TokenStorage {
 
   static Future<void> clearShareToken() async {
     await _storage.delete(key: _shareTokenKey);
+  }
+
+  /// 读取本端稳定 clientId（多端并存登录时区分会话）。
+  /// 首次调用时生成并持久化，与 token 独立，登出不清除。
+  static Future<String> getClientId() async {
+    final existing = await _storage.read(key: _clientIdKey);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+    final id = 'app-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
+        '-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+    await _storage.write(key: _clientIdKey, value: id);
+    return id;
   }
 }

@@ -114,9 +114,9 @@ class _FolderNodeTile extends StatelessWidget {
             node.isLeaf ? Icons.folder_outlined : Icons.folder,
             color: Theme.of(context).colorScheme.primary,
           ),
-          title: Text(node.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          title: Text(node.label, maxLines: 1, overflow: TextOverflow.ellipsis),
           selected: selectedId == node.id,
-          onTap: () => onSelect(node.id, node.name),
+          onTap: () => onSelect(node.id, node.label),
         ),
         for (final child in node.children)
           _FolderNodeTile(

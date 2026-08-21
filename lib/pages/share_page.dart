@@ -74,9 +74,12 @@ class _SharePageState extends ConsumerState<SharePage> {
   }
 
   Future<void> _copyUrl(ShareVO share) async {
-    await Clipboard.setData(
-      ClipboardData(text: share.shareUrl.isEmpty ? '分享链接' : share.shareUrl),
-    );
+    if (share.shareUrl.isEmpty) {
+      // shareUrl 为空（例如后端未生成分享链接）时不复制占位文本，明确提示用户
+      _toast('暂无分享链接，无法复制');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: share.shareUrl));
     _toast('分享链接已复制');
   }
 
@@ -133,10 +136,13 @@ class _SharePageState extends ConsumerState<SharePage> {
   }
 
   String? _extractShareId(String input) {
-    // 纯 ID（数字或字母数字组合）
-    if (RegExp(r'^[0-9a-zA-Z]+$').hasMatch(input)) return input;
+    // 分享 ID 由后端 IdUtil 使用 URL-safe Base64 加密生成，字符集为字母数字 + '-'/'_'，
+    // 因此 ID 正则需同时覆盖这三种字符，否则含 '-'/'_' 的合法 ID 会被误判为无效。
+    final idChar = r'0-9a-zA-Z_\-';
+    // 纯 ID（字母数字 + '-'/'_' 组合）
+    if (RegExp('^[$idChar]+\$').hasMatch(input)) return input;
     // 从 URL 中提取 /share/{id}
-    final match = RegExp(r'/share/([0-9a-zA-Z]+)').firstMatch(input);
+    final match = RegExp('/share/([$idChar]+)').firstMatch(input);
     return match?.group(1);
   }
 

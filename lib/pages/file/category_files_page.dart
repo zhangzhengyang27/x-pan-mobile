@@ -70,7 +70,8 @@ class _CategoryFilesPageState extends ConsumerState<CategoryFilesPage> {
     });
     try {
       final res = await FileService.instance.list(
-        parentId: '0',
+        // -1 表示全盘（后端跳过 parent_id 过滤），跨目录按类型聚合查询
+        parentId: '-1',
         fileTypes: widget.fileTypesParam,
       );
       if (!mounted) return;

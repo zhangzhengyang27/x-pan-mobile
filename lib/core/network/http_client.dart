@@ -43,6 +43,8 @@ class HttpClient {
           if (token.isNotEmpty) {
             options.headers['Authorization'] = token;
           }
+          // 多端并存登录：每端带稳定 clientId，后端按 userId_clientId 隔离会话
+          options.headers['X-Client-Id'] = await TokenStorage.getClientId();
           options.headers['X-Pan-Trace-Id'] = genTraceId();
           handler.next(options);
         },

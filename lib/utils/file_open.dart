@@ -105,16 +105,54 @@ Future<String?> resolveCoverUrl(
   }
 }
 
-/// 将文件按创建时间归组为时间轴分组（今天/昨天/本周/本月/更早）
-/// 返回 [标签, 文件列表] 的列表，按时间由近到远排序。
-List<(String, List<FileVO>)> groupByTimeline(List<FileVO> files) {
+/// 时间线分组粒度（对齐前端 ImageTimeline）。
+///
+/// - [smart]：相对分组（今天/昨天/本周/本月/更早），用于文档等时间跨度大的分类。
+/// - [day]  ：按 年月日 精确分组（2026年03月05日）。
+/// - [month]：按 年月 精确分组（2026年03月）。
+/// - [year] ：按 年 精确分组（2026年）。
+enum TimelineMode { smart, day, month, year }
+
+/// 单个时间线分组。
+class TimelineGroup {
+  const TimelineGroup(this.label, this.files);
+  final String label;
+  final List<FileVO> files;
+}
+
+/// 按 [mode] 将文件归组为时间轴分组，组内按时间由近到远、组间由近到远排序。
+///
+/// [smart] 模式兼容旧版文档视图的模糊分组（今天/昨天/本周/本月/更早）。
+List<TimelineGroup> groupByTimeline(
+  List<FileVO> files, [
+  TimelineMode mode = TimelineMode.smart,
+]) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
-  final yesterday = today.subtract(const Duration(days: 1));
-  final weekAgo = today.subtract(const Duration(days: 7));
-  final monthAgo = today.subtract(const Duration(days: 30));
 
   String labelFor(DateTime t) {
+    if (mode != TimelineMode.smart) {
+      final y = t.year;
+      final m = t.month.toString().padLeft(2, '0');
+      final d = t.day.toString().padLeft(2, '0');
+      switch (mode) {
+        case TimelineMode.year:
+          return '$y年';
+        case TimelineMode.month:
+          return '$y年$m月';
+        case TimelineMode.day:
+          if (t.isAtSameMomentAs(today)) return '今天';
+          final yesterday = today.subtract(const Duration(days: 1));
+          if (t.isAtSameMomentAs(yesterday)) return '昨天';
+          if (t.year == now.year) return '$m月$d日';
+          return '$y年$m月$d日';
+        default:
+          break;
+      }
+    }
+    final yesterday = today.subtract(const Duration(days: 1));
+    final weekAgo = today.subtract(const Duration(days: 7));
+    final monthAgo = today.subtract(const Duration(days: 30));
     if (t.isAfter(today)) return '今天';
     if (t.isAfter(yesterday)) return '昨天';
     if (t.isAfter(weekAgo)) return '本周';
@@ -122,23 +160,43 @@ List<(String, List<FileVO>)> groupByTimeline(List<FileVO> files) {
     return '更早';
   }
 
-  final map = <String, List<FileVO>>{};
+  // 用 int 排序 key：smart 模式用固定权重（小在前），精确模式用 -时间戳（取负后倒序，最新在前）。
+  final groupsMap = <String, TimelineGroup>{};
+  final orderList = <(int, String)>[];
+  final seen = <String>{};
+
   for (final f in files) {
     final t = _parseTime(f.createTime) ?? now;
-    final label = labelFor(DateTime(t.year, t.month, t.day));
-    map.putIfAbsent(label, () => []).add(f);
+    final dayKey = DateTime(t.year, t.month, t.day);
+    final label = labelFor(dayKey);
+    if (!seen.contains(label)) {
+      seen.add(label);
+      groupsMap[label] = TimelineGroup(label, []);
+      final sortKey = mode == TimelineMode.smart
+          ? _smartOrder(label)
+          : -dayKey.millisecondsSinceEpoch;
+      orderList.add((sortKey, label));
+    }
+    groupsMap[label]!.files.add(f);
   }
 
-  const order = ['今天', '昨天', '本周', '本月', '更早'];
-  final groups = <(String, List<FileVO>)>[];
-  for (final label in order) {
-    final list = map[label];
-    if (list != null && list.isNotEmpty) {
-      list.sort((a, b) => b.createTime.compareTo(a.createTime));
-      groups.add((label, list));
-    }
+  // 统一升序排序：smart 权重小在前；精确分组 -时间戳 使最新组排最前。
+  orderList.sort((a, b) => a.$1.compareTo(b.$1));
+
+  final result = <TimelineGroup>[];
+  for (final (_, label) in orderList) {
+    final g = groupsMap[label]!;
+    g.files.sort((a, b) => b.createTime.compareTo(a.createTime));
+    result.add(g);
   }
-  return groups;
+  return result;
+}
+
+/// smart 模式下的固定排序权重（越小越靠前）。
+int _smartOrder(String label) {
+  const order = ['今天', '昨天', '本周', '本月', '更早'];
+  final i = order.indexOf(label);
+  return i == -1 ? order.length : i;
 }
 
 DateTime? _parseTime(String s) {

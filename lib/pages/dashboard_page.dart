@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/storage/recent_storage.dart';
 import '../core/theme/app_tokens.dart';
 import '../models/file_vo.dart';
+import '../models/user_file_stats.dart';
 import '../providers/auth_provider.dart';
+import '../services/user_service.dart';
 import '../utils/format.dart';
 import '../widgets/app_card.dart';
 import '../widgets/gradient_header.dart';
@@ -14,7 +15,8 @@ import '../widgets/skeleton.dart';
 /// 仪表盘 / 统计页
 ///
 /// 对齐网页版 DashboardCards + DashboardCharts：
-/// 统计当前用户存储用量与最近访问的文件类型分布。
+/// 统计当前用户存储用量与云端全盘文件类型分布。
+/// 数据来源：后端 /files/stats 聚合统计接口（全盘，含子目录）。
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
 
@@ -25,25 +27,36 @@ class DashboardPage extends ConsumerStatefulWidget {
 class _DashboardPageState extends ConsumerState<DashboardPage> {
   bool _loading = true;
 
-  /// 文件类型 → 最近访问次数
-  Map<FileType, int> _typeDist = {};
+  /// 后端统计概览
+  UserFileStats? _stats;
+
+  /// 文件类型 → 数量（由后端统计聚合）
+  Map<FileType, int> get _typeDist {
+    final s = _stats;
+    if (s == null) return const {};
+    final dist = <FileType, int>{};
+    if (s.imageCount > 0) dist[FileType.image] = s.imageCount;
+    if (s.videoCount > 0) dist[FileType.video] = s.videoCount;
+    if (s.audioCount > 0) dist[FileType.audio] = s.audioCount;
+    if (s.docCount > 0) dist[FileType.pdf] = s.docCount;
+    if (s.archiveCount > 0) dist[FileType.archive] = s.archiveCount;
+    if (s.codeCount > 0) dist[FileType.code] = s.codeCount;
+    if (s.otherCount > 0) dist[FileType.normal] = s.otherCount;
+    return dist;
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadTypeDist();
+    _loadStats();
   }
 
-  Future<void> _loadTypeDist() async {
+  Future<void> _loadStats() async {
     try {
-      final recent = await RecentStorage.getAll();
-      final dist = <FileType, int>{};
-      for (final item in recent) {
-        final type = FileType.fromCode(item.fileType);
-        if (type == FileType.folder) continue;
-        dist[type] = (dist[type] ?? 0) + 1;
-      }
-      if (mounted) setState(() => _typeDist = dist);
+      final stats = await FileService.instance.stats();
+      if (mounted) setState(() => _stats = stats);
+    } catch (_) {
+      // 加载失败时保留空态，页面展示"暂无数据"
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -137,8 +150,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     const SizedBox(width: AppTokens.space12),
                     Expanded(
                       child: Text(
-                        '类型分布基于最近访问记录统计，'
-                        '完整的云端文件类型分布图表将在后续版本中补充。',
+                        '文件类型分布来自云端全盘统计，'
+                        '包含所有目录下的文件，数据实时同步。',
                         style: AppTokens.bodySmall.copyWith(
                           color: AppTokens.textSecondary(brightness),
                           height: 1.6,

@@ -4,6 +4,7 @@ import '../models/api_response.dart';
 import '../models/file_version.dart';
 import '../models/file_vo.dart';
 import '../models/folder_node.dart';
+import '../models/user_file_stats.dart';
 import '../models/user_info.dart';
 
 /// 面包屑项，对齐前端 BreadcrumbItem
@@ -162,6 +163,17 @@ class FileService {
         json as Map<String, dynamic>,
         (e) => FileVO.fromJson(e as Map<String, dynamic>),
       ),
+    );
+  }
+
+  /// 查询用户文件统计概览（全盘，含子目录）
+  ///
+  /// 对齐前端 fileService.stats，后端返回 UserFileStatsVO。
+  Future<UserFileStats> stats() {
+    return _http.request<UserFileStats>(
+      '/files/stats',
+      dataDecoder: (json) =>
+          UserFileStats.fromJson(json as Map<String, dynamic>),
     );
   }
 

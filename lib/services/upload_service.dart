@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/config/app_config.dart';
 import '../core/network/http_client.dart';
@@ -222,8 +222,11 @@ class UploadService {
         },
       );
       return uploadedChunks;
-    } catch (_) {
-      // 断点检测失败时返回空集合，回退为全量上传
+    } catch (e) {
+      // 断点检测失败：回退为全量上传（保证上传可继续）是合理容错，
+      // 但必须记录日志，避免断点续传长期静默失效导致大量流量重复上传却不自知。
+      // 注意：对大文件而言断点失效意味着已传分片全部重新上传，成本较高，值得被观测到。
+      debugPrint('[upload_service] 断点检测失败，回退为全量上传: $e');
       return <int>{};
     }
   }
