@@ -1,7 +1,12 @@
 # X-Pan 移动端 CI/CD — x-pan-mobile 子仓库
 #
-# - Flutter analyze + test
-# - Android debug APK 构建并上传产物（发布前冒烟验证）
+# - Flutter analyze + test（静态分析 + 单元测试）
+# - 四平台编译（作为整体门禁,任一步失败即标记失败）：
+#   · Android APK   —— ubuntu  runner  flutter build apk
+#   · iOS           —— macOS   runner  flutter build ios --no-codesign
+#   · macOS         —— macOS   runner  flutter build macos
+#   · Windows       —— windows runner  flutter build windows
+# 注：GitHub 无法在 Linux 构建 iOS/macOS，故按宿主系统分配各平台 job。
 name: X-Pan Mobile CI/CD
 
 on:
@@ -12,8 +17,9 @@ on:
     branches: [ main, master, develop ]
 
 jobs:
-  mobile:
-    name: Mobile (Flutter Analyze + Test + Build APK)
+  # —— 静态分析 + 单元测试（统一在 Linux 上快速执行） ——
+  analyze-test:
+    name: Analyze + Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,7 +47,30 @@ jobs:
         run: flutter test
         continue-on-error: true  # 部分网络相关测试在 CI 可能波动，不阻塞
 
-      - name: Build debug APK
+  # —— Android APK ——
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-xpan-mobile-android
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
         run: flutter build apk --debug
 
       - name: Upload APK artifact
@@ -50,3 +79,63 @@ jobs:
           name: app-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 7
+
+  # —— iOS ——
+  build-ios:
+    name: Build iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-xpan-mobile-ios
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --debug --no-codesign
+
+  # —— macOS ——
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-xpan-mobile-macos
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --debug
+
+  # —— Windows ——
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-xpan-mobile-windows
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --debug
