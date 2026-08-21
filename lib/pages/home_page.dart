@@ -1145,8 +1145,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     return GridView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(8),
-      // 限制预加载范围，减少快速滚动时的并发缩略图请求
-      cacheExtent: 200,
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 8,
