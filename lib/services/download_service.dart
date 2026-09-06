@@ -44,7 +44,8 @@ class DownloadService {
     final dio = HttpClient.instance.dio;
 
     final dir = await getTemporaryDirectory();
-    final savePath = '${dir.path}/$filename';
+    final safeName = _sanitizeFilename(filename);
+    final savePath = '${dir.path}/$safeName';
 
     await dio.download(
       '/file/download',
@@ -62,5 +63,21 @@ class DownloadService {
     );
 
     return savePath;
+  }
+
+  /// 文件名消毒：过滤路径分隔符与控制字符，防止目录逃逸；
+  /// 消毒后为空则回退为时间戳文件名
+  String _sanitizeFilename(String raw) {
+    final cleaned = raw
+        // 路径分隔符与文件系统非法字符 → 下划线
+        .replaceAll(RegExp(r'[\\/]+'), '_')
+        .replaceAll(RegExp(r'[:*?"<>|]'), '_')
+        // 控制字符（含 \x00-\x1f 与 DEL）直接删除
+        .replaceAll(RegExp(r'[\x00-\x1f\x7f]'), '')
+        .trim();
+    if (cleaned.isEmpty || cleaned == '.' || cleaned == '..') {
+      return 'download_${DateTime.now().millisecondsSinceEpoch}';
+    }
+    return cleaned;
   }
 }

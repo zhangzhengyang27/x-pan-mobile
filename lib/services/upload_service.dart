@@ -29,6 +29,17 @@ class UploadService {
   /// 取消异常
   static const cancelException = ApiException(-2, '已取消');
 
+  /// 当前上传任务的取消令牌（串行队列同一时刻至多一个任务在上传）
+  ///
+  /// 取消时调用 [cancelActiveUpload]，在途的分片/合并请求会被立即中断。
+  CancelToken? _activeCancelToken;
+
+  /// 取消当前上传任务的在途请求（分片上传/合并）
+  void cancelActiveUpload() {
+    _activeCancelToken?.cancel();
+    _activeCancelToken = null;
+  }
+
   /// 上传单个文件（完整流程：计算 MD5 → 秒传检测 → 断点检测 → 分片上传 → 合并）
   ///
   /// [resumeIdentifier]：跨重启恢复时传入已计算的 identifier，跳过 MD5 计算。
@@ -49,6 +60,11 @@ class UploadService {
     final identifier = resumeIdentifier ?? await _computeMd5(file);
     _checkCancel();
     onProgress?.call(0);
+
+    // 每个任务独立的取消令牌：分片上传与合并请求都携带，
+    // cancelActiveUpload() 可立即中断在途 HTTP 请求
+    final cancelToken = CancelToken();
+    _activeCancelToken = cancelToken;
 
     final chunkSize = AppConfig.chunkSize;
     final totalChunks = (totalSize / chunkSize).ceil();
@@ -86,15 +102,17 @@ class UploadService {
         filename: filename,
         totalSize: totalSize,
         totalChunks: totalChunks,
+        cancelToken: cancelToken,
       );
 
       // 全部已上传：直接合并（中断后重传的场景）
       if (uploadedChunks.length == totalChunks) {
-        await FileService.instance.merge(
+        await _merge(
           identifier: identifier,
           filename: filename,
           parentId: parentId,
           totalSize: totalSize,
+          cancelToken: cancelToken,
         );
         await UploadTaskStorage.remove(identifier);
         onProgress?.call(1);
@@ -126,6 +144,7 @@ class UploadService {
           totalChunks: totalChunks,
           currentChunkSize: currentChunkSize,
           bytes: bytes,
+          cancelToken: cancelToken,
         );
 
         uploadedCount++;
@@ -133,17 +152,20 @@ class UploadService {
       }
 
       // 3. 合并
-      await FileService.instance.merge(
+      await _merge(
         identifier: identifier,
         filename: filename,
         parentId: parentId,
         totalSize: totalSize,
+        cancelToken: cancelToken,
       );
       await UploadTaskStorage.remove(identifier);
       onProgress?.call(1);
-    } catch (e) {
-      // 上传失败：保留任务记录，等待下次恢复
-      rethrow;
+    } finally {
+      // 上传失败：保留任务记录，等待下次恢复（异常向上抛出由队列标记失败）
+      if (identical(_activeCancelToken, cancelToken)) {
+        _activeCancelToken = null;
+      }
     }
   }
 
@@ -168,6 +190,12 @@ class UploadService {
   }
 
   /// 秒传检测；命中返回 true（无需上传）
+  ///
+  /// 后端语义（FileController#secUpload）：命中返回 R.success()（code=0）；
+  /// 未命中返回 R.fail("文件唯一标识不存在，请手动执行文件上传")，
+  /// 对应业务 code = ResponseCode.ERROR = 1。
+  /// 仅 code=1 视为「未命中」回退分片上传；code=10（登录失效，
+  /// NeedReloginException）与 5xx 等一律上抛，不再吞异常。
   Future<bool> _trySecUpload({
     required String filename,
     required String identifier,
@@ -181,11 +209,8 @@ class UploadService {
       );
       return true;
     } on ApiException catch (e) {
-      // 未命中秒传（后端返回特定 code），继续走分片上传
-      if (e.code == 0) return true;
-      return false;
-    } catch (_) {
-      return false;
+      if (e.code == 1) return false;
+      rethrow;
     }
   }
 
@@ -194,16 +219,19 @@ class UploadService {
   /// 对齐 simple-uploader 的 testChunks 机制：GET /file/chunk-upload
   /// 携带 identifier 等参数，后端返回 data.uploadedChunks（1-based chunkNumber 数组）。
   ///
-  /// 通过 HttpClient.request 发起，自动处理 token 注入与续期。
+  /// 容错白名单同样收窄：仅业务错误（code=1）回退为全量上传；
+  /// code=10（NeedReloginException）与 5xx 等一律上抛，
+  /// 避免登录失效/服务器故障被静默吞掉导致断点续传长期失效。
   Future<Set<int>> _queryUploadedChunks({
     required String parentId,
     required String identifier,
     required String filename,
     required int totalSize,
     required int totalChunks,
+    required CancelToken cancelToken,
   }) async {
     try {
-      final uploadedChunks = await HttpClient.instance.request<Set<int>>(
+      return await _requestWithCancel<Set<int>>(
         '/file/chunk-upload',
         query: {
           'parentId': parentId,
@@ -212,6 +240,7 @@ class UploadService {
           'totalSize': totalSize,
           'totalChunks': totalChunks,
         },
+        cancelToken: cancelToken,
         dataDecoder: (json) {
           if (json is Map) {
             final map = json.cast<String, dynamic>();
@@ -221,13 +250,84 @@ class UploadService {
           return <int>{};
         },
       );
-      return uploadedChunks;
-    } catch (e) {
-      // 断点检测失败：回退为全量上传（保证上传可继续）是合理容错，
-      // 但必须记录日志，避免断点续传长期静默失效导致大量流量重复上传却不自知。
-      // 注意：对大文件而言断点失效意味着已传分片全部重新上传，成本较高，值得被观测到。
-      debugPrint('[upload_service] 断点检测失败，回退为全量上传: $e');
-      return <int>{};
+    } on ApiException catch (e) {
+      if (e.code == 1) {
+        debugPrint('[upload_service] 断点检测业务失败(code=1)，回退为全量上传');
+        return <int>{};
+      }
+      rethrow;
+    }
+  }
+
+  /// 合并分片（与 FileService.merge 同接口，额外携带取消令牌）
+  Future<void> _merge({
+    required String identifier,
+    required String filename,
+    required String parentId,
+    required int totalSize,
+    required CancelToken cancelToken,
+  }) {
+    return _requestWithCancel<dynamic>(
+      '/file/merge',
+      method: 'POST',
+      data: {
+        'identifier': identifier,
+        'filename': filename,
+        'parentId': parentId,
+        'totalSize': totalSize,
+      },
+      cancelToken: cancelToken,
+    );
+  }
+
+  /// 携带 CancelToken 的业务请求（与 HttpClient.request 相同的统一响应解析）
+  ///
+  /// HttpClient.request 暂未透传 cancelToken（公共网络层由其他并行任务维护，
+  /// 此处不改动），上传链路需要任务级取消能力，故基于同一共享 Dio 实例发起：
+  /// 拦截器（token 注入/续期/trace-id）依然生效，仅本地补充统一响应解析。
+  Future<T> _requestWithCancel<T>(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? query,
+    Object? data,
+    T Function(dynamic json)? dataDecoder,
+    required CancelToken cancelToken,
+  }) async {
+    try {
+      final response = await HttpClient.instance.dio.request<dynamic>(
+        path,
+        queryParameters: query,
+        data: data,
+        options: Options(method: method),
+        cancelToken: cancelToken,
+      );
+
+      final body = response.data;
+      final Map<String, dynamic> map;
+      if (body is Map<String, dynamic>) {
+        map = body;
+      } else if (body is Map) {
+        map = body.cast<String, dynamic>();
+      } else {
+        throw ApiException(-1, '响应格式错误');
+      }
+
+      final code = map['code'] as int? ?? -1;
+      final message = map['message'] as String? ?? '';
+      if (code == 10) throw const NeedReloginException();
+      if (code != 0) throw ApiException(code, message);
+
+      final rawData = map['data'];
+      if (dataDecoder != null) return dataDecoder(rawData);
+      return rawData as T;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel || cancelToken.isCancelled) {
+        throw cancelException;
+      }
+      throw ApiException(
+        e.response?.statusCode ?? -1,
+        '请求失败（${e.response?.statusCode ?? '网络异常'}）',
+      );
     }
   }
 
@@ -241,13 +341,13 @@ class UploadService {
     required int totalChunks,
     required int currentChunkSize,
     required Uint8List bytes,
+    required CancelToken cancelToken,
   }) async {
     final formData = FormData.fromMap({
       'file': MultipartFile.fromBytes(bytes, filename: filename),
     });
 
-    // 通过 HttpClient.request 发起，自动处理 token 注入与续期
-    await HttpClient.instance.request<dynamic>(
+    await _requestWithCancel<dynamic>(
       '/file/chunk-upload',
       method: 'POST',
       query: {
@@ -260,6 +360,7 @@ class UploadService {
         'currentChunkSize': currentChunkSize,
       },
       data: formData,
+      cancelToken: cancelToken,
     );
   }
 
@@ -277,6 +378,10 @@ class UploadService {
   }
 
   /// 计算文件 MD5（后台 isolate 执行，不阻塞 UI）
+  ///
+  /// 保持现状说明：MD5 已通过 computeFileMd5 在 isolate 中计算，
+  /// 不阻塞 UI 线程；isolate 内部不可取消（中断成本高于收益），
+  /// 取消检查在 MD5 完成后的 _checkCancel() 处生效。
   Future<String> _computeMd5(File file) {
     return computeFileMd5(file.path);
   }

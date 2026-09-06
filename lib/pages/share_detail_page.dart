@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/network/http_client.dart';
 import '../core/storage/token_storage.dart';
@@ -27,6 +28,12 @@ class ShareDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
+  /// 记录 share_token 归属分享的本地键（SharedPreferences）
+  ///
+  /// TokenStorage 的 share_token 是全局单槽，跨分享会复用旧 token；
+  /// 这里记录 token 属于哪个 shareId，不匹配则忽略旧 token 走提取码流程。
+  static const String _shareTokenOwnerKey = 'share_token_owner';
+
   ShareDetail? _detail;
   String? _shareToken;
   String? _error;
@@ -56,7 +63,15 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
 
       // 2. 尝试直接获取详情（无需提取码时）
       final savedToken = await TokenStorage.getShareToken();
-      final token = savedToken.isNotEmpty ? savedToken : '';
+      var token = '';
+      if (savedToken.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        final owner = prefs.getString(_shareTokenOwnerKey);
+        // 全局单槽 token 属于其他分享：忽略，走提取码流程
+        if (owner == widget.shareId) {
+          token = savedToken;
+        }
+      }
       try {
         final detail = await ShareService.instance.detail(token);
         if (mounted) {
@@ -117,6 +132,9 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
         shareCode: code,
       );
       await TokenStorage.setShareToken(token);
+      // 校验成功：记录 token 归属当前分享，避免其他分享复用旧 token
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_shareTokenOwnerKey, widget.shareId);
       final detail = await ShareService.instance.detail(token);
       if (mounted) {
         setState(() {

@@ -80,9 +80,16 @@ class NotificationService {
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
 
+  /// 连接代次：每次发起 connect 递增，使仍在握手中的旧连接流程失效，
+  /// 避免旧的 await 完成后重复置状态 / 重复调度重连。
+  int _epoch = 0;
+
   bool _disposed = false;
   bool _connected = false;
   bool get isConnected => _connected;
+
+  /// 是否已被主动断开（登出后为 true，需 [reset] 后才能再次连接）
+  bool get isDisposed => _disposed;
 
   /// 通知回调（type -> message）
   void Function(NoticeMessage message)? onMessage;
@@ -102,28 +109,53 @@ class NotificationService {
     return '$scheme://$host$port/ws/notification?token=${Uri.encodeComponent(token)}';
   }
 
-  void connect(String token) {
+  /// 建立连接
+  ///
+  /// [WebSocketChannel.connect] 非阻塞立即返回，握手结果由 [WebSocketChannel.ready]
+  /// 异步给出：等待 ready 成功后才置 _connected / 清零重连计数 / 启动心跳，
+  /// 失败（握手失败、网络不通）走指数退避重连，避免退避被提前清零而失效。
+  Future<void> connect(String token) async {
     if (token.isEmpty) return;
     if (_disposed) return;
-    if (_channel != null && _connected) return;
+    if (_connected) return;
 
-    final url = _buildWsUrl(token);
+    // 递增代次，使仍在握手中的旧连接流程失效（幂等守卫）
+    final epoch = ++_epoch;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
+    final channel = WebSocketChannel.connect(Uri.parse(_buildWsUrl(token)));
+    _channel = channel;
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url));
-      _subscription = _channel!.stream.listen(
-        _onData,
-        onError: (_) => _onClose(),
-        onDone: _onClose,
-      );
-
-      // 连接建立后（首条消息或直接认为已连接）
-      _connected = true;
-      _reconnectAttempts = 0;
-      onConnectionChanged?.call(true);
-      _startHeartbeat();
+      // 等待握手真正建立；连接失败/超时由 ready 抛出
+      await channel.ready.timeout(const Duration(seconds: 15));
     } catch (_) {
+      if (epoch != _epoch) return; // 已被新的连接取代
+      _channel = null;
       _scheduleReconnect();
+      return;
     }
+
+    if (epoch != _epoch) {
+      // 握手期间发生了新的 connect / disconnect，废弃本次连接
+      try {
+        await channel.sink.close();
+      } catch (_) {
+        // 忽略
+      }
+      return;
+    }
+
+    // 连接确认建立后才置状态并启动心跳
+    _connected = true;
+    _reconnectAttempts = 0;
+    onConnectionChanged?.call(true);
+    _subscription = channel.stream.listen(
+      _onData,
+      onError: (_) => _onClose(),
+      onDone: _onClose,
+    );
+    _startHeartbeat();
   }
 
   void _onData(dynamic raw) {
@@ -173,7 +205,7 @@ class NotificationService {
       // 重连时刷新 token（可能已续期）
       TokenStorage.getToken().then((token) {
         if (token.isNotEmpty && !_disposed) {
-          connect(token);
+          unawaited(connect(token));
         }
       });
     });
@@ -189,6 +221,7 @@ class NotificationService {
 
   void disconnect() {
     _disposed = true;
+    _epoch++; // 使仍在握手中的 connect 流程失效
     _heartbeatTimer?.cancel();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;

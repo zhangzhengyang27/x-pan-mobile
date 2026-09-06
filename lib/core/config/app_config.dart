@@ -11,7 +11,7 @@ class AppConfig {
   /// 后端 API 基础地址（不带末尾斜杠）
   static const String apiBaseUrl = String.fromEnvironment(
     'X_PAN_API_BASE_URL',
-    defaultValue: 'http://localhost:8081',
+    defaultValue: 'http://127.0.0.1:8081',
   );
 
   /// 请求超时（毫秒），对齐前端 60s

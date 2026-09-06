@@ -160,6 +160,12 @@ class _UploadTasksView extends ConsumerWidget {
                   tooltip: '取消',
                   onPressed: () => manager.cancel(task.id),
                 ),
+              if (task.status == UploadStatus.failed)
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18),
+                  tooltip: '重试',
+                  onPressed: () => manager.retry(task.id),
+                ),
             ],
           ),
           const SizedBox(height: AppTokens.space8),
@@ -398,8 +404,8 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
             const SizedBox(height: AppTokens.space8),
             Text(
               task.status == 5
-                  ? '云端解压中… ${(task.progress * 100).toInt()}%'
-                  : '${(task.progress * 100).toInt()}%  ·  ${_formatSize(task.downloadedSize)} / ${_formatSize(task.totalSize)}',
+                  ? '云端解压中… ${task.progress.toInt()}%'
+                  : '${task.progress.toInt()}%  ·  ${_formatSize(task.downloadedSize)} / ${_formatSize(task.totalSize)}',
               style: AppTokens.labelSmall.copyWith(
                 color: AppTokens.textSecondary(b),
               ),

@@ -58,18 +58,23 @@ class NotificationManager extends StateNotifier<NotificationState> {
 
   /// 启动（登录后调用）
   Future<void> start() async {
-    if (_started) return;
+    final service = NotificationService.instance;
+    // 幂等守卫：已启动且底层连接未被主动断开则跳过
+    if (_started && !service.isDisposed) return;
     _started = true;
+
+    // 防御：service 已被 disconnect（如登出未走 stop 的残留状态），先复位再重建连接
+    if (service.isDisposed) service.reset();
 
     final token = await TokenStorage.getToken();
     if (token.isEmpty) return;
 
-    final service = NotificationService.instance;
     service.onMessage = _handleMessage;
     service.onConnectionChanged = (connected) {
       state = state.copyWith(connected: connected);
     };
-    service.connect(token);
+    // connect 内部等待握手完成，这里不阻塞调用方
+    unawaited(service.connect(token));
   }
 
   /// 停止并复位（登出时由 auth 层调用，使 [start] 可再次生效）
@@ -215,16 +220,23 @@ class NotificationThrottle {
   /// 去重窗口
   final Duration window;
 
-  String _lastKey = '';
-  DateTime _lastTime = DateTime.fromMillisecondsSinceEpoch(0);
+  /// 各 key 最近一次推送时间：按 key 独立判窗，
+  /// 避免单一 _lastKey 被其他通知覆盖后绕过去重
+  final Map<String, DateTime> _lastPush = {};
+
+  /// map 上限：超过后清理过期项，防止 key 无限增长
+  static const int _maxEntries = 100;
 
   /// 判断是否应推送；相同 key 在窗口内返回 false
   bool shouldPush(String key, DateTime now) {
-    if (key == _lastKey && now.difference(_lastTime) < window) {
+    final last = _lastPush[key];
+    if (last != null && now.difference(last) < window) {
       return false;
     }
-    _lastKey = key;
-    _lastTime = now;
+    if (_lastPush.length >= _maxEntries) {
+      _lastPush.removeWhere((_, time) => now.difference(time) >= window);
+    }
+    _lastPush[key] = now;
     return true;
   }
 }

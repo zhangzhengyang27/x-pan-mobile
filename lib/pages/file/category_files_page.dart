@@ -80,7 +80,8 @@ class _CategoryFilesPageState extends ConsumerState<CategoryFilesPage> {
         _loading = false;
       });
     } on NeedReloginException {
-      // 鉴权失败由 HttpClient 统一弹登录，这里仅保留当前页
+      // 鉴权失败由全局 relogin 监听统一清理登录态并跳转登录页
+      // （HttpClient.onNeedRelogin -> AuthNotifier.forceRelogin），这里仅兜底保留当前页
       if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());

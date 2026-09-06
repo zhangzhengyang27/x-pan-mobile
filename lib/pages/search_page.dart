@@ -30,6 +30,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   /// 会话内搜索历史（最新在前，最多 8 条）
   final List<String> _history = [];
 
+  /// 竞态防护：每次搜索自增，响应回来序号不匹配则丢弃过期结果
+  int _searchSeq = 0;
+
   @override
   void dispose() {
     _ctrl.dispose();
@@ -40,6 +43,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final kw = (keyword ?? _ctrl.text).trim();
     if (kw.isEmpty) return;
     if (keyword != null) _ctrl.text = kw;
+    final seq = ++_searchSeq;
     setState(() {
       _loading = true;
       _error = null;
@@ -51,13 +55,18 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (_history.length > 8) _history.removeLast();
     try {
       final results = await FileService.instance.search(keyword: kw);
+      // 已发起更新的搜索：丢弃过期响应（loading 交由最新请求管理）
+      if (seq != _searchSeq) return;
       if (!mounted) return;
       setState(() => _results = results);
     } catch (e) {
+      if (seq != _searchSeq) return;
       if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && seq == _searchSeq) {
+        setState(() => _loading = false);
+      }
     }
   }
 

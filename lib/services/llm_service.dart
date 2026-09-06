@@ -72,7 +72,14 @@ class LLMService {
       throw const LlmNotConfiguredException('未配置 API Key，请先到「AI 助手」设置');
     }
 
-    final dio = Dio();
+    // 临时 Dio 实例必须显式配置超时：DeepSeek 直连，
+    // 无超时会因网络故障无限挂起（连接 15s / 响应 120s，LLM 生成耗时较长）
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
     try {
       final res = await dio.post<dynamic>(
         _endpoint,

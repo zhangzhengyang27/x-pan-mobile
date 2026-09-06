@@ -70,7 +70,21 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
 
   void _poll(String taskId) {
     _pollTimer?.cancel();
+    // 轮询上限（约 120 次）：超时停止并提示，避免转换任务异常时无限轮询
+    const maxPollAttempts = 120;
+    var attempts = 0;
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (attempts >= maxPollAttempts) {
+        timer.cancel();
+        if (mounted) {
+          setState(() {
+            _error = '文档转换超时，请稍后重试';
+            _loading = false;
+          });
+        }
+        return;
+      }
+      attempts++;
       try {
         final task = await PreviewService.instance.url(taskId);
         if (task.status == 2 && task.previewUrl.isNotEmpty) {
@@ -85,7 +99,7 @@ class _OfficePreviewPageState extends State<OfficePreviewPage> {
             });
           }
         }
-      } catch (e) {
+      } catch (_) {
         // 轮询失败不中断，继续尝试
       }
     });

@@ -61,9 +61,11 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   bool _initialized = false;
-  bool _uploading = false;
-  double _uploadProgress = 0;
-  String _uploadingName = '';
+
+  /// 下载进度（H13：这三个字段实际驱动文件下载进度条）
+  bool _downloading = false;
+  double _downloadProgress = 0;
+  String _downloadingName = '';
 
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
@@ -155,16 +157,16 @@ class _HomePageState extends ConsumerState<HomePage> {
       return;
     }
     setState(() {
-      _uploading = true;
-      _uploadProgress = 0;
-      _uploadingName = file.filename;
+      _downloading = true;
+      _downloadProgress = 0;
+      _downloadingName = file.filename;
     });
     try {
       await DownloadService.instance.downloadAndOpen(
         fileId: file.fileId,
         filename: file.filename,
         onProgress: (p) {
-          if (mounted) setState(() => _uploadProgress = p);
+          if (mounted) setState(() => _downloadProgress = p);
         },
       );
     } catch (e) {
@@ -172,8 +174,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     } finally {
       if (mounted) {
         setState(() {
-          _uploading = false;
-          _uploadingName = '';
+          _downloading = false;
+          _downloadingName = '';
         });
       }
     }
@@ -594,6 +596,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       final task = await ExtractService.instance.extract(file.fileId);
       if (task.status == 2) {
         _toast('解压完成');
+        if (!mounted) return;
         await _refresh();
         return;
       }
@@ -612,6 +615,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         final task = await ExtractService.instance.progress(taskId);
         if (task.status == 2) {
           _toast('解压完成（${task.totalCount} 个文件）');
+          if (!mounted) return;
           await _refresh();
           return;
         }
@@ -624,6 +628,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
     }
     _toast('解压超时，请稍后刷新查看');
+    if (!mounted) return;
     await _refresh();
   }
 
@@ -920,10 +925,10 @@ class _HomePageState extends ConsumerState<HomePage> {
               onPressed: _showAddSheet,
               child: const Icon(Icons.add),
             ),
-      bottomSheet: _uploading
+      bottomSheet: _downloading
           ? UploadProgressBar(
-              name: _uploadingName,
-              progress: _uploadProgress,
+              name: _downloadingName,
+              progress: _downloadProgress,
             )
           : null,
     );
@@ -1117,56 +1122,77 @@ class _HomePageState extends ConsumerState<HomePage> {
     return _buildList(state.files);
   }
 
-  Widget _buildList(List<FileVO> files) {
-    return ListView.builder(
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: files.length,
-      itemBuilder: (ctx, i) {
-        final file = files[i];
-        return _FileTile(
-          file: file,
-          selected: _selectedIds.contains(file.fileId),
-          selectionMode: _selectionMode,
-          onTap: () => _selectionMode ? _toggleSelect(file) : _openFile(file),
-          onLongPress: () {
-            if (!_selectionMode) {
-              _toggleSelectionMode();
-              _toggleSelect(file);
-            } else {
-              _showFileActions(file);
-            }
-          },
-        );
+  /// 列表滚动到底（距底部 200px 内）时加载下一页
+  ///
+  /// loadMore 内部有 loading/loadingMore/hasMore 防重入，重复通知是安全的。
+  Widget _withLoadMore(Widget child) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification &&
+            notification.metrics.pixels >=
+                notification.metrics.maxScrollExtent - 200) {
+          ref.read(fileListProvider.notifier).loadMore();
+        }
+        return false;
       },
+      child: child,
+    );
+  }
+
+  Widget _buildList(List<FileVO> files) {
+    return _withLoadMore(
+      ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: files.length,
+        itemBuilder: (ctx, i) {
+          final file = files[i];
+          return _FileTile(
+            file: file,
+            selected: _selectedIds.contains(file.fileId),
+            selectionMode: _selectionMode,
+            onTap: () => _selectionMode ? _toggleSelect(file) : _openFile(file),
+            onLongPress: () {
+              if (!_selectionMode) {
+                _toggleSelectionMode();
+                _toggleSelect(file);
+              } else {
+                _showFileActions(file);
+              }
+            },
+          );
+        },
+      ),
     );
   }
 
   Widget _buildGrid(List<FileVO> files) {
-    return GridView.builder(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(8),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 120,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 0.8,
+    return _withLoadMore(
+      GridView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 120,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 0.8,
+        ),
+        itemCount: files.length,
+        itemBuilder: (ctx, i) {
+          final file = files[i];
+          return _FileGridItem(
+            file: file,
+            selected: _selectedIds.contains(file.fileId),
+            selectionMode: _selectionMode,
+            onTap: () => _selectionMode ? _toggleSelect(file) : _openFile(file),
+            onLongPress: () {
+              if (!_selectionMode) {
+                _toggleSelectionMode();
+                _toggleSelect(file);
+              }
+            },
+          );
+        },
       ),
-      itemCount: files.length,
-      itemBuilder: (ctx, i) {
-        final file = files[i];
-        return _FileGridItem(
-          file: file,
-          selected: _selectedIds.contains(file.fileId),
-          selectionMode: _selectionMode,
-          onTap: () => _selectionMode ? _toggleSelect(file) : _openFile(file),
-          onLongPress: () {
-            if (!_selectionMode) {
-              _toggleSelectionMode();
-              _toggleSelect(file);
-            }
-          },
-        );
-      },
     );
   }
 }

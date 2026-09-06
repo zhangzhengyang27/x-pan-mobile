@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 import '../config/app_config.dart';
@@ -69,6 +71,21 @@ class HttpClient {
 
   Dio get dio => _dio;
 
+  /// 全局「需要重新登录」事件（广播流）
+  ///
+  /// 任一请求遇到 code === 10（token 失效）时触发，
+  /// 由认证层（AuthNotifier）订阅并统一清理登录态，路由 redirect 自动跳回登录页。
+  static final StreamController<void> _reloginController =
+      StreamController<void>.broadcast();
+
+  static Stream<void> get onNeedRelogin => _reloginController.stream;
+
+  static void _notifyNeedRelogin() {
+    if (!_reloginController.isClosed) {
+      _reloginController.add(null);
+    }
+  }
+
   /// 发起请求并解析为统一业务数据 T
   ///
   /// 成功（code === 0）返回 data；否则抛出异常。
@@ -104,7 +121,11 @@ class HttpClient {
       final code = map['code'] as int? ?? -1;
       final message = map['message'] as String? ?? '';
 
-      if (code == 10) throw const NeedReloginException();
+      if (code == 10) {
+        // token 过期/被踢：广播全局事件，由认证层统一清理登录态
+        _notifyNeedRelogin();
+        throw const NeedReloginException();
+      }
       if (code != 0) throw ApiException(code, message);
 
       final rawData = map['data'];
@@ -141,8 +162,10 @@ class HttpClient {
   }
 
   String genTraceId() {
-    final time = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
-    final rand = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    // 单次取值复用，避免毫秒与微秒来自不同时刻
+    final now = DateTime.now();
+    final time = now.millisecondsSinceEpoch.toRadixString(36);
+    final rand = now.microsecondsSinceEpoch.toRadixString(36);
     return 'app-$time-$rand';
   }
 }

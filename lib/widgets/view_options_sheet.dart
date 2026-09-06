@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
+import '../providers/file_provider.dart';
 import '../providers/view_mode_provider.dart';
+
+/// 排序变更后刷新文件列表（load 内部会重置到第 1 页；
+/// 列表未初始化时 currentFolderId 为 null，load 会安全跳过）
+void _reloadFileList(WidgetRef ref) {
+  ref.read(fileListProvider.notifier).refresh();
+}
 
 /// 文件视图切换底部弹窗
 ///
@@ -81,34 +88,34 @@ class ViewOptionsSheet extends ConsumerWidget {
                 _Chip(
                   label: '名称',
                   selected: mode.sortField == FileSortField.name,
-                  onTap: () => notifier.setSort(
-                    FileSortField.name,
-                    mode.sortOrder,
-                  ),
+                  onTap: () {
+                    notifier.setSort(FileSortField.name, mode.sortOrder);
+                    _reloadFileList(ref);
+                  },
                 ),
                 _Chip(
                   label: '创建时间',
                   selected: mode.sortField == FileSortField.createTime,
-                  onTap: () => notifier.setSort(
-                    FileSortField.createTime,
-                    mode.sortOrder,
-                  ),
+                  onTap: () {
+                    notifier.setSort(FileSortField.createTime, mode.sortOrder);
+                    _reloadFileList(ref);
+                  },
                 ),
                 _Chip(
                   label: '修改时间',
                   selected: mode.sortField == FileSortField.updateTime,
-                  onTap: () => notifier.setSort(
-                    FileSortField.updateTime,
-                    mode.sortOrder,
-                  ),
+                  onTap: () {
+                    notifier.setSort(FileSortField.updateTime, mode.sortOrder);
+                    _reloadFileList(ref);
+                  },
                 ),
                 _Chip(
                   label: '文件大小',
                   selected: mode.sortField == FileSortField.size,
-                  onTap: () => notifier.setSort(
-                    FileSortField.size,
-                    mode.sortOrder,
-                  ),
+                  onTap: () {
+                    notifier.setSort(FileSortField.size, mode.sortOrder);
+                    _reloadFileList(ref);
+                  },
                 ),
               ],
             ),
@@ -123,7 +130,10 @@ class ViewOptionsSheet extends ConsumerWidget {
                       ? '升序 ↑'
                       : '降序 ↓',
                   selected: false,
-                  onTap: notifier.toggleSortOrder,
+                  onTap: () {
+                    notifier.toggleSortOrder();
+                    _reloadFileList(ref);
+                  },
                 ),
                 const SizedBox(width: AppTokens.space8),
                 _Chip(

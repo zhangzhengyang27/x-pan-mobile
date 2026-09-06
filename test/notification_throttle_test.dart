@@ -39,5 +39,24 @@ void main() {
         isTrue,
       );
     });
+
+    test('交替 key 互不覆盖去重窗口（按 key 独立判窗）', () {
+      final throttle = NotificationThrottle();
+      expect(throttle.shouldPush('system-升级', now), isTrue);
+      // 插入其他 key 后，原 key 的窗口仍应生效（单 key 记录会被覆盖绕过去重）
+      expect(
+        throttle.shouldPush('upload-新文件', now.add(const Duration(seconds: 3))),
+        isTrue,
+      );
+      expect(
+        throttle.shouldPush('system-升级', now.add(const Duration(seconds: 5))),
+        isFalse,
+      );
+      // 超过窗口后恢复推送
+      expect(
+        throttle.shouldPush('system-升级', now.add(const Duration(seconds: 11))),
+        isTrue,
+      );
+    });
   });
 }

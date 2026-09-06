@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../providers/auth_provider.dart';
-import '../providers/notification_provider.dart';
 import '../services/user_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_list_item.dart';
@@ -148,8 +147,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
     if (confirm != true) return;
-    // 停止实时通知并断开连接（路由守卫会自动跳回登录页）
-    ref.read(notificationProvider.notifier).stop();
+    // 通知停已收敛进 AuthNotifier.logout()（路由守卫会自动跳回登录页）
     await ref.read(authProvider.notifier).logout();
   }
 
@@ -227,8 +225,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         newPassword: newPassword,
       );
       _toast('密码修改成功');
-      // 修改密码后重新登录
-      ref.read(notificationProvider.notifier).stop();
+      // 修改密码后重新登录（通知停已收敛进 logout）
       await ref.read(authProvider.notifier).logout();
     } catch (e) {
       _toast(e.toString());
