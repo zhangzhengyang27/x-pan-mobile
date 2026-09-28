@@ -45,7 +45,6 @@ jobs:
 
       - name: Run tests
         run: flutter test
-        continue-on-error: true  # 部分网络相关测试在 CI 可能波动，不阻塞
 
   # —— Android APK ——
   build-android:
