@@ -18,6 +18,8 @@ import '../providers/notification_provider.dart';
 import '../providers/upload_provider.dart';
 import '../services/ai_file_service.dart';
 import '../services/deep_link_service.dart';
+import '../services/notification_api.dart';
+import 'notification_list_page.dart';
 import '../services/download_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/extract_service.dart';
@@ -88,7 +90,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     _deepLinkSub = DeepLinkService.instance.inviteCodeStream.listen((_) {
       _maybeHandleInvite();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initRoot());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initRoot();
+      _refreshUnread();
+    });
   }
 
   @override
@@ -344,6 +349,23 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _refresh() => ref.read(fileListProvider.notifier).refresh();
+
+  int _unreadCount = 0;
+
+  Future<void> _refreshUnread() async {
+    try {
+      final count = await NotificationApi.instance().unreadCount();
+      if (!mounted) return;
+      setState(() => _unreadCount = count);
+    } catch (_) {
+      // 未读数获取失败静默（角标维持原值）
+    }
+  }
+
+  void _openNotifications() async {
+    await Navigator.of(context).push(AppTokens.route(const NotificationListPage()));
+    if (mounted) _refreshUnread();
+  }
 
   /// 根目录初始化失败的恢复态：明确报错 + 重试，替代"空文件夹"误导
   Widget _buildRootFailure(Brightness brightness) {
@@ -1292,6 +1314,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         ],
       ),
       actions: [
+        _NotificationBellButton(onOpen: _openNotifications, unread: _unreadCount),
         IconButton(
           icon: const Icon(Icons.swap_horiz),
           tooltip: '切换空间',
@@ -1751,6 +1774,50 @@ class _CategoryShortcut extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// 通知铃铛（对齐 Web 端 NotificationBell）：未读角标 + 点击进入通知中心
+class _NotificationBellButton extends StatelessWidget {
+  const _NotificationBellButton({required this.onOpen, required this.unread});
+
+  final VoidCallback onOpen;
+  final int unread;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.notifications_outlined),
+          if (unread > 0)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.error,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Text(
+                  unread > 99 ? '99+' : '$unread',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      tooltip: '通知中心',
+      onPressed: onOpen,
     );
   }
 }
