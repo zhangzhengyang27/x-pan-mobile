@@ -314,7 +314,12 @@ class UploadService {
 
       final code = map['code'] as int? ?? -1;
       final message = map['message'] as String? ?? '';
-      if (code == 10) throw const NeedReloginException();
+      if (code == 10) {
+        // 分片上传走的是自定义 Dio 流程，必须显式广播重登录，
+        // 否则 token 失效后任务标"失败"但应用仍停留在已登录态
+        HttpClient.notifyNeedRelogin();
+        throw const NeedReloginException();
+      }
       if (code != 0) throw ApiException(code, message);
 
       final rawData = map['data'];

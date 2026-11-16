@@ -10,5 +10,8 @@ void main() {
     // 等待首帧渲染
     await tester.pump();
     expect(find.byType(MaterialApp), findsOneWidget);
+    // 弱网恢复逻辑会在启动时重试拉取用户信息（Dio 超时定时器）——
+    // 推进虚拟时钟让后台请求完成，避免测试结束后残留 pending timer
+    await tester.pump(const Duration(seconds: 30));
   });
 }
