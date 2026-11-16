@@ -13,6 +13,7 @@ class TokenStorage {
   static const String _loginTokenKey = 'login_token';
   static const String _shareTokenKey = 'share_token';
   static const String _clientIdKey = 'client_id';
+  static const String _spaceIdKey = 'xpan_space_id';
 
   // flutter_secure_storage 本身使用 Android Keystore / iOS Keychain 加密。
   // 不使用 encryptedSharedPreferences，避免要求 minSdk 23。
@@ -25,6 +26,8 @@ class TokenStorage {
   static String? _tokenCache;
 
   static String? _clientIdCache;
+
+  static String? _spaceIdCache;
 
   /// 首次并发获取 clientId 时复用同一 Future，保证只生成一次
   static Future<String>? _clientIdFuture;
@@ -41,6 +44,7 @@ class TokenStorage {
       _tokenCache = null;
       _clientIdCache = null;
       _clientIdFuture = null;
+      _spaceIdCache = null;
     }
   }
 
@@ -63,6 +67,32 @@ class TokenStorage {
     _ensureCacheOwner();
     _tokenCache = '';
     await _storage.delete(key: _loginTokenKey);
+  }
+
+  /// 当前团队空间 ID（空字符串表示个人空间）
+  static Future<String> getSpaceId() async {
+    _ensureCacheOwner();
+    final cached = _spaceIdCache;
+    if (cached != null) return cached;
+    final id = await _storage.read(key: _spaceIdKey) ?? '';
+    _spaceIdCache = id;
+    return id;
+  }
+
+  static Future<void> setSpaceId(String spaceId) async {
+    _ensureCacheOwner();
+    _spaceIdCache = spaceId;
+    if (spaceId.isEmpty) {
+      await _storage.delete(key: _spaceIdKey);
+    } else {
+      await _storage.write(key: _spaceIdKey, value: spaceId);
+    }
+  }
+
+  static Future<void> clearSpaceId() async {
+    _ensureCacheOwner();
+    _spaceIdCache = '';
+    await _storage.delete(key: _spaceIdKey);
   }
 
   static Future<void> setShareToken(String token) async {

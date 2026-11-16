@@ -125,11 +125,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               controller: _usernameCtrl,
                               textInputAction: TextInputAction.next,
                               decoration: const InputDecoration(
-                                labelText: '用户名',
+                                labelText: '用户名或邮箱',
                                 prefixIcon: Icon(Icons.person_outline),
                               ),
                               validator: (v) => (v == null || v.trim().isEmpty)
-                                  ? '请输入用户名'
+                                  ? '请输入用户名或邮箱'
                                   : null,
                             ),
                             const SizedBox(height: AppTokens.space16),

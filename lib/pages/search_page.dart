@@ -26,6 +26,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   String? _error;
   bool _searched = false;
   String _keyword = '';
+  /// 是否同时搜索文件正文
+  bool _searchContent = false;
 
   /// 会话内搜索历史（最新在前，最多 8 条）
   final List<String> _history = [];
@@ -54,7 +56,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _history.insert(0, kw);
     if (_history.length > 8) _history.removeLast();
     try {
-      final results = await FileService.instance.search(keyword: kw);
+      final results = _searchContent
+          ? (await FileService.instance.fulltextSearch(
+              keyword: kw,
+              pageSize: 50,
+            ))
+              .records
+          : await FileService.instance.search(keyword: kw);
       // 已发起更新的搜索：丢弃过期响应（loading 交由最新请求管理）
       if (seq != _searchSeq) return;
       if (!mounted) return;
@@ -142,6 +150,26 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppTokens.space16,
+                0,
+                AppTokens.space16,
+                AppTokens.space8,
+              ),
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('搜索正文'),
+                    selected: _searchContent,
+                    onSelected: (value) {
+                      setState(() => _searchContent = value);
+                      if (_searched) _search();
+                    },
+                  ),
+                ],
+              ),
+            ),
             Expanded(child: _buildBody(brightness)),
           ],
         ),
@@ -198,7 +226,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       return EmptyState(
         icon: Icons.search,
         title: '输入关键词开始搜索',
-        subtitle: '支持按文件名模糊搜索',
+        subtitle: _searchContent ? '支持文件名、正文与标签搜索' : '支持按文件名模糊搜索',
       );
     }
     if (_results.isEmpty) {

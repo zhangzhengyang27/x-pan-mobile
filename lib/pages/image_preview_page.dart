@@ -6,6 +6,7 @@ import '../core/theme/app_tokens.dart';
 import '../models/file_vo.dart';
 import '../services/user_service.dart';
 import '../widgets/skeleton.dart';
+import 'image_edit_page.dart';
 
 /// 图片预览页
 ///
@@ -60,6 +61,23 @@ class _ImagePreviewPageState extends State<ImagePreviewPage> {
 
   void _toggleChrome() => setState(() => _chromeVisible = !_chromeVisible);
 
+  bool _canEdit(FileVO file) {
+    final name = file.filename.toLowerCase();
+    return name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png');
+  }
+
+  Future<void> _openEditor(FileVO file) async {
+    await Navigator.of(context).push(
+      AppTokens.route(ImageEditPage(file: file)),
+    );
+    if (!mounted) return;
+    // 编辑返回后失效当前图片的预览直链缓存，触发重新拉取
+    _urlCache.remove(file.fileId);
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final file = widget.files[_index];
@@ -82,6 +100,14 @@ class _ImagePreviewPageState extends State<ImagePreviewPage> {
                 style: AppTokens.titleLarge.copyWith(color: Colors.white),
               )
             : null,
+        actions: [
+          if (_chromeVisible && _canEdit(file))
+            IconButton(
+              tooltip: '编辑',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => _openEditor(file),
+            ),
+        ],
       ),
       body: Stack(
         children: [

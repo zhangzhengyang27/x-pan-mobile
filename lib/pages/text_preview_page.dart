@@ -8,6 +8,7 @@ import '../models/file_vo.dart';
 import '../services/user_service.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/skeleton.dart';
+import 'text_edit_page.dart';
 
 /// 文本 / 代码 / Markdown 预览页
 ///
@@ -50,6 +51,20 @@ class _TextPreviewPageState extends State<TextPreviewPage> {
     return _codeExtensions.any(name.endsWith);
   }
 
+  /// 仅 Markdown / TXT 支持在线编辑（与后端一致）
+  bool get _isEditable {
+    final name = widget.file.filename.toLowerCase();
+    return _isMarkdown || name.endsWith('.txt');
+  }
+
+  Future<void> _openEditor() async {
+    await Navigator.of(context).push(
+      AppTokens.route(TextEditPage(file: widget.file)),
+    );
+    // 编辑返回后刷新预览内容与版本
+    if (mounted) _init();
+  }
+
   Future<void> _init() async {
     try {
       final result =
@@ -80,6 +95,14 @@ class _TextPreviewPageState extends State<TextPreviewPage> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          if (_isEditable)
+            IconButton(
+              tooltip: '编辑',
+              onPressed: _loading ? null : _openEditor,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+        ],
       ),
       body: _buildBody(),
     );

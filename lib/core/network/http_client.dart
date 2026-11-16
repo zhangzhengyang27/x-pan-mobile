@@ -47,6 +47,11 @@ class HttpClient {
           }
           // 多端并存登录：每端带稳定 clientId，后端按 userId_clientId 隔离会话
           options.headers['X-Client-Id'] = await TokenStorage.getClientId();
+          // 团队空间：非空时后端按空间维度隔离文件
+          final spaceId = await TokenStorage.getSpaceId();
+          if (spaceId.isNotEmpty) {
+            options.headers['X-Space-Id'] = spaceId;
+          }
           options.headers['X-Pan-Trace-Id'] = genTraceId();
           handler.next(options);
         },
@@ -85,6 +90,11 @@ class HttpClient {
       _reloginController.add(null);
     }
   }
+
+  /// 供绕过统一 [request] 的调用方（分片上传、下载等自定义 Dio 流程）广播重登录事件。
+  /// code=10 的识别与广播必须与 [request] 内部行为一致，否则token失效时
+  /// 应用停留在"已登录"态、其它页面静默失效。
+  static void notifyNeedRelogin() => _notifyNeedRelogin();
 
   /// 发起请求并解析为统一业务数据 T
   ///

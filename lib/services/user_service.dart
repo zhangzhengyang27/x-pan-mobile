@@ -1,6 +1,12 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../core/config/app_config.dart';
 import '../core/network/http_client.dart';
 import '../models/api_response.dart';
+import '../models/file_edit.dart';
 import '../models/file_version.dart';
 import '../models/file_vo.dart';
 import '../models/folder_node.dart';
@@ -52,6 +58,7 @@ class UserService {
     required String username,
     required String password,
     String? email,
+    String? emailCode,
     String? answer,
   }) {
     return _http.request<dynamic>(
@@ -61,8 +68,33 @@ class UserService {
         'username': username,
         'password': password,
         if (email != null) 'email': email,
+        if (emailCode != null) 'emailCode': emailCode,
         if (answer != null) 'answer': answer,
       },
+    );
+  }
+
+  /// 发送邮箱验证码（scene: REGISTER / BIND）
+  Future<dynamic> sendEmailCode({
+    required String email,
+    required String scene,
+  }) {
+    return _http.request<dynamic>(
+      '/user/email/code',
+      method: 'POST',
+      data: {'email': email, 'scene': scene},
+    );
+  }
+
+  /// 绑定/更换邮箱（需邮箱验证码）
+  Future<dynamic> bindEmail({
+    required String email,
+    required String code,
+  }) {
+    return _http.request<dynamic>(
+      '/user/email',
+      method: 'PUT',
+      data: {'email': email, 'code': code},
     );
   }
 
@@ -278,6 +310,38 @@ class FileService {
     );
   }
 
+  /// 全文检索（文件名 + 正文 + 标签）
+  Future<PageVO<FileVO>> fulltextSearch({
+    required String keyword,
+    String? fileTypes,
+    String? extensions,
+    String? dateFrom,
+    String? dateTo,
+    num? sizeMin,
+    num? sizeMax,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) {
+    return _http.request<PageVO<FileVO>>(
+      '/search/fulltext',
+      query: {
+        'keyword': keyword,
+        if (fileTypes != null) 'fileTypes': fileTypes,
+        if (extensions != null) 'extensions': extensions,
+        if (dateFrom != null) 'dateFrom': dateFrom,
+        if (dateTo != null) 'dateTo': dateTo,
+        if (sizeMin != null) 'sizeMin': sizeMin,
+        if (sizeMax != null) 'sizeMax': sizeMax,
+        'pageNum': pageNum,
+        'pageSize': pageSize,
+      },
+      dataDecoder: (json) => PageVO<FileVO>.fromJson(
+        json as Map<String, dynamic>,
+        (item) => FileVO.fromJson(item as Map<String, dynamic>),
+      ),
+    );
+  }
+
   /// 面包屑
   Future<List<BreadcrumbItem>> getBreadcrumbs(String fileId) {
     return _http.request<List<BreadcrumbItem>>(
@@ -403,6 +467,113 @@ class FileService {
       method: 'DELETE',
       query: {'id': id, 'fileId': fileId},
     );
+  }
+
+  // ─── 在线编辑（Markdown/文本） ─────────────────────────────────────────
+
+  /// 文件详情（含乐观锁版本号）
+  Future<FileDetail> getDetail(String fileId) {
+    return _http.request<FileDetail>(
+      '/file/detail',
+      query: {'fileId': fileId},
+      dataDecoder: (json) => FileDetail.fromJson(json as Map<String, dynamic>),
+    );
+  }
+
+  /// 申请编辑锁（同一文件同一时间仅允许一个用户编辑）
+  Future<EditSession> acquireEditSession(String fileId) {
+    return _http.request<EditSession>(
+      '/file/edit/session',
+      method: 'POST',
+      query: {'fileId': fileId},
+      dataDecoder: (json) => EditSession.fromJson(json as Map<String, dynamic>),
+    );
+  }
+
+  /// 释放编辑锁
+  Future<dynamic> releaseEditSession({
+    required String fileId,
+    String? lockToken,
+  }) {
+    return _http.request<dynamic>(
+      '/file/edit/session',
+      method: 'DELETE',
+      query: {
+        'fileId': fileId,
+        if (lockToken != null && lockToken.isNotEmpty) 'lockToken': lockToken,
+      },
+    );
+  }
+
+  /// 保存文件内容（覆盖写入并生成新版本）
+  ///
+  /// [baseVersion] 为客户端读取到的版本号，服务端做乐观锁校验，
+  /// 版本不一致时抛出 code=409 的 [ApiException]。
+  Future<FileContentSaveResult> saveContent({
+    required String fileId,
+    required int baseVersion,
+    required String content,
+    required String filename,
+    String? remark,
+  }) {
+    return saveContentBytes(
+      fileId: fileId,
+      baseVersion: baseVersion,
+      bytes: Uint8List.fromList(utf8.encode(content)),
+      filename: filename,
+      remark: remark,
+    );
+  }
+
+  /// 保存文件二进制内容（图片等）
+  Future<FileContentSaveResult> saveContentBytes({
+    required String fileId,
+    required int baseVersion,
+    required Uint8List bytes,
+    required String filename,
+    String? remark,
+  }) {
+    final form = FormData.fromMap({
+      'fileId': fileId,
+      'baseVersion': '$baseVersion',
+      if (remark != null && remark.isNotEmpty) 'remark': remark,
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    return _http.request<FileContentSaveResult>(
+      '/file/content',
+      method: 'PUT',
+      data: form,
+      extraHeaders: {'Content-Type': 'multipart/form-data'},
+      dataDecoder: (json) =>
+          FileContentSaveResult.fromJson(json as Map<String, dynamic>),
+    );
+  }
+
+  /// 读取文件原始字节（图片编辑器 / 文本编辑器复用）
+  Future<Uint8List> fetchRawBytes(String fileId) async {
+    final url = await resolvePreviewUrl(fileId);
+    final response = await _http.dio.get<List<int>>(
+      url,
+      options: Options(responseType: ResponseType.bytes),
+    );
+    final raw = response.data;
+    return raw == null ? Uint8List(0) : Uint8List.fromList(raw);
+  }
+
+  /// 读取文件原始文本（用于编辑器，避免 text-extract 的 2 万字符截断）
+  Future<String> fetchRawText(String fileId) async {
+    final bytes = await fetchRawBytes(fileId);
+    String text;
+    try {
+      text = utf8.decode(bytes);
+    } on FormatException {
+      // 非 UTF-8 文本（如 GBK）：按 latin1 兜底，保存时会统一转为 UTF-8
+      text = latin1.decode(bytes);
+    }
+    if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
+      text = text.substring(1);
+    }
+    return text;
   }
 }
 

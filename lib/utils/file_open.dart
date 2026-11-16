@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/storage/recent_storage.dart';
 import '../models/file_vo.dart';
 import '../pages/csv_preview_page.dart';
+import '../pages/image_preview_page.dart';
 import '../pages/office_preview_page.dart';
 import '../pages/pdf_preview_page.dart';
 import '../pages/text_preview_page.dart';
@@ -29,7 +30,14 @@ void openFileByType(
     return;
   }
 
+  final imageFiles = images.isEmpty ? [file] : images;
+  final imageIndex = imageFiles.indexWhere((f) => f.fileId == file.fileId);
+
   final route = switch (file.fileType) {
+    FileType.image => AppTokens.route(ImagePreviewPage(
+        files: imageFiles,
+        initialIndex: imageIndex >= 0 ? imageIndex : 0,
+      )),
     FileType.video => AppTokens.route(VideoPreviewPage(file: file)),
     FileType.audio => AppTokens.route(AudioPreviewPage(file: file)),
     FileType.pdf => AppTokens.route(PDFPreviewPage(file: file)),

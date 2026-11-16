@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -72,6 +74,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             _SettingsGroup(
               title: '账号',
               children: [
+                AppListTile(
+                  leading: const Icon(
+                    Icons.email_outlined,
+                    color: AppTokens.brandPrimary,
+                  ),
+                  title: (auth.user?.email ?? '').isEmpty ? '绑定邮箱' : '更换邮箱',
+                  subtitle: (auth.user?.email ?? '').isEmpty
+                      ? '绑定后可使用邮箱登录与找回账号'
+                      : auth.user!.email!,
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    color: AppTokens.textTertiary(brightness),
+                  ),
+                  onTap: _bindEmail,
+                ),
                 AppListTile(
                   leading: const Icon(
                     Icons.lock_outline,
@@ -232,6 +249,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  Future<void> _bindEmail() async {
+    final auth = ref.read(authProvider);
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (_) => _BindEmailDialog(currentEmail: auth.user?.email ?? ''),
+    );
+    if (updated == true) {
+      await ref.read(authProvider.notifier).refreshUser();
+      _toast('邮箱已绑定，可使用邮箱登录');
+    }
+  }
+
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -280,6 +309,165 @@ class _SettingsGroup extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 绑定/更换邮箱弹窗
+class _BindEmailDialog extends StatefulWidget {
+  const _BindEmailDialog({required this.currentEmail});
+
+  final String currentEmail;
+
+  @override
+  State<_BindEmailDialog> createState() => _BindEmailDialogState();
+}
+
+class _BindEmailDialogState extends State<_BindEmailDialog> {
+  static final _emailPattern =
+      RegExp(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+
+  final _emailCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
+  bool _sending = false;
+  bool _saving = false;
+  int _countdown = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailCtrl.text = widget.currentEmail;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _emailCtrl.dispose();
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _sendCode() async {
+    final email = _emailCtrl.text.trim();
+    if (!_emailPattern.hasMatch(email)) {
+      _toast('请输入正确的邮箱地址');
+      return;
+    }
+    if (_sending || _countdown > 0) return;
+    setState(() => _sending = true);
+    try {
+      await UserService.instance.sendEmailCode(email: email, scene: 'BIND');
+      if (!mounted) return;
+      _toast('验证码已发送，请查收邮箱');
+      setState(() => _countdown = 60);
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          _countdown -= 1;
+          if (_countdown <= 0) timer.cancel();
+        });
+      });
+    } catch (e) {
+      _toast(e.toString());
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final email = _emailCtrl.text.trim();
+    final code = _codeCtrl.text.trim();
+    if (!_emailPattern.hasMatch(email)) {
+      _toast('请输入正确的邮箱地址');
+      return;
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      _toast('请输入 6 位邮箱验证码');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await UserService.instance.bindEmail(email: email, code: code);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      _toast(e.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return AlertDialog(
+      title: const Text('邮箱设置'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.currentEmail.isEmpty
+                ? '当前未绑定邮箱，绑定后可使用邮箱登录。'
+                : '当前邮箱：${widget.currentEmail}',
+            style: AppTokens.bodySmall.copyWith(
+              color: AppTokens.textSecondary(brightness),
+            ),
+          ),
+          const SizedBox(height: AppTokens.space12),
+          TextField(
+            controller: _emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(labelText: '邮箱'),
+          ),
+          const SizedBox(height: AppTokens.space12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _codeCtrl,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: '6 位验证码',
+                    counterText: '',
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppTokens.space8),
+              TextButton(
+                onPressed: _countdown > 0 || _sending ? null : _sendCode,
+                child: Text(
+                  _countdown > 0
+                      ? '${_countdown}s'
+                      : _sending
+                          ? '发送中…'
+                          : '获取验证码',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: Text(_saving ? '保存中…' : '保存'),
         ),
       ],
     );

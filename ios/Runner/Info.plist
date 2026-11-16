@@ -45,6 +45,20 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- 邀请深链：xpan://join?code=xxx -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.xiaoye.xpan.mobile</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>xpan</string>
+			</array>
+		</dict>
+	</array>
 	<!-- 允许明文 HTTP（开发阶段后端为 http:// 地址） -->
 	<key>NSAppTransportSecurity</key>
 	<dict>

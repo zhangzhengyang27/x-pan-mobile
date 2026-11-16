@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# 提交前密钥扫描（首次使用执行：git config core.hooksPath .githooks）
+set -e
+
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --no-banner
+else
+  echo "[gitleaks] 未安装，跳过本地扫描；CI 的 Secret Scan 仍会强制校验。"
+fi

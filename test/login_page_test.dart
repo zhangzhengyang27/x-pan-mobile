@@ -84,7 +84,7 @@ void main() {
 
     expect(find.text('X Pan'), findsOneWidget);
     expect(find.textContaining('个人分布式存储'), findsOneWidget);
-    expect(find.text('用户名'), findsOneWidget);
+    expect(find.text('用户名或邮箱'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '登录'), findsOneWidget);
     expect(find.text('没有账号？去注册'), findsOneWidget);
