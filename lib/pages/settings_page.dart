@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../providers/auth_provider.dart';
+import '../providers/photo_backup_provider.dart';
 import '../services/user_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_list_item.dart';
@@ -20,10 +21,17 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  Future<void> _runPhotoBackup() async {
+    // 权限拒绝/失败原因由 provider 状态展示在卡片副标题
+    await ref.read(photoBackupRunProvider.notifier).runNow();
+  }
+
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     final auth = ref.watch(authProvider);
+    final backupEnabled = ref.watch(photoBackupEnabledProvider);
+    final runState = ref.watch(photoBackupRunProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ResponsiveContent(
@@ -114,6 +122,45 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   onTap: () => Navigator.of(context).push(
                     AppTokens.route(const DevicePage()),
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppTokens.space24),
+            _SettingsGroup(
+              title: '相册备份',
+              children: [
+                AppListTile(
+                  leading: const Icon(
+                    Icons.photo_library_outlined,
+                    color: AppTokens.brandPrimary,
+                  ),
+                  title: '自动备份相册',
+                  subtitle: '开启后新照片/视频自动备份到"相册备份"目录，截图单独归档',
+                  trailing: Switch(
+                    value: backupEnabled,
+                    onChanged: (v) => ref
+                        .read(photoBackupEnabledProvider.notifier)
+                        .setEnabled(v),
+                  ),
+                ),
+                AppListTile(
+                  leading: const Icon(
+                    Icons.backup_outlined,
+                    color: AppTokens.brandPrimary,
+                  ),
+                  title: runState.scanning ? '正在扫描相册…' : '立即备份',
+                  subtitle: runState.lastMessage.isEmpty ? null : runState.lastMessage,
+                  trailing: runState.scanning
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          Icons.chevron_right,
+                          color: AppTokens.textTertiary(brightness),
+                        ),
+                  onTap: runState.scanning ? null : () => _runPhotoBackup(),
                 ),
               ],
             ),
