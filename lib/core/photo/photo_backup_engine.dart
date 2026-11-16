@@ -22,7 +22,8 @@ class BackupScanResult {
   final String? error;
 }
 
-typedef UploadEnqueuer = Future<void> Function(File file, String parentId);
+typedef UploadEnqueuer = Future<void> Function(
+    File file, String parentId, BackupAsset asset);
 
 /// 解析相对目录（如 "相册备份/2026-11"）为该目录的 parentId（幂等创建）
 typedef DirectoryResolver = Future<String> Function(String relativeDir);
@@ -62,6 +63,9 @@ class PhotoBackupEngine {
   /// 前后台并发互斥：SP 标记（30 分钟超时兜底），被占用直接跳过本次。
   Future<BackupScanResult> scanAndEnqueue({bool force = false}) async {
     final sp = await SharedPreferences.getInstance();
+    // 跨 isolate 可见性：shared_preferences 有进程内缓存，后台 isolate 写入的
+    // 标记/记录前台缓存看不到——扫描入口强制 reload 后再读
+    await sp.reload();
     final running = sp.getString(kMutexKey);
     if (running != null) {
       final startedAt = DateTime.tryParse(running);
@@ -89,6 +93,9 @@ class PhotoBackupEngine {
   }
 
   Future<BackupScanResult> _scanAndEnqueueInner(SharedPreferences sp) async {
+    // C1：先加载持久化记录（markBackedUp 只在自己实例触发 load，
+    // 新实例/新 isolate 的判定若不 load 会读到空缓存 → 每轮重复入队首个资产）
+    await recordStore.load();
     if (!await assetSource.ensurePermission()) {
       return const BackupScanResult(scanned: 0, enqueued: 0, skipped: 0, needsPermission: true);
     }
@@ -130,8 +137,10 @@ class PhotoBackupEngine {
         parentId = await dirResolver(classification.relativeDir);
         dirIdCache[classification.relativeDir] = parentId;
       }
-      await enqueuer(file, parentId);
-      await recordStore.markBackedUp(asset.assetId, mtimeMillis, size);
+      // markBackedUp 不在此处调用（I2）：入队 ≠ 上传成功——前台 addFile 立即返回，
+      // 失败任务的资产必须留待下次扫描重试。"上传成功才记"由 enqueuer 实现方
+      // 在任务终态（后台 await uploadFile 成功 / 前台 onTaskSettled）时执行
+      await enqueuer(file, parentId, asset);
       enqueued += 1;
       await Future<void>.delayed(Duration.zero);
     }
@@ -139,17 +148,16 @@ class PhotoBackupEngine {
     return BackupScanResult(scanned: assets.length, enqueued: enqueued, skipped: skipped);
   }
 
-  /// 清理临时目录中超过 24h 的残留副本；每次扫描前顺带执行
+  /// 清理临时目录中超过 24h 的残留副本（含按资产隔离的子目录）；每次扫描前顺带执行
   Future<void> cleanupTemp() async {
     final root = await _tempRoot;
     if (!await root.exists()) return;
     final cutoff = DateTime.now().subtract(const Duration(hours: 24));
     await for (final entity in root.list()) {
-      if (entity is! File) continue;
       final stat = await entity.stat();
       if (stat.modified.isBefore(cutoff)) {
         try {
-          await entity.delete();
+          await entity.delete(recursive: entity is Directory);
         } catch (_) {
           // 单个清理失败不影响其余
         }

@@ -24,11 +24,14 @@ abstract class BackupAsset {
   final bool isScreenshot;
 
   /// 落临时文件（原图副本，保留原文件名）；失败返回 null（调用方跳过并记录）。
-  /// 统一放进 photo_backup/ 临时目录，由 engine 清理。
+  /// 路径按 assetId 隔离（photo_backup/\<assetId\>/\<title\>）：同名资产（跨月/跨相册
+  /// 的 IMG_1234.jpg 常见）互不覆盖——旧实现的扁平同名路径会让后到者覆盖
+  /// 先到者尚未上传完的内容，造成"错误内容被备份 + 原内容静默漏备"。
   Future<File?> toFile() async {
     final origin = await originFile();
     if (origin == null) return null;
-    final dir = Directory('${(await getTemporaryDirectory()).path}/photo_backup');
+    final dir = Directory(
+        '${(await getTemporaryDirectory()).path}/photo_backup/$assetId');
     await dir.create(recursive: true);
     final target = File('${dir.path}/$fileName');
     if (target.path == origin.path) return origin;
@@ -100,17 +103,16 @@ class PhotoManagerBackupAsset extends BackupAsset {
   Future<File?> originFile() => entity.originFile;
 }
 
-/// 清理 photo_backup/ 临时目录中超过 maxAgeHours 的残留副本
+/// 清理 photo_backup/ 临时目录中超过 maxAgeHours 的残留副本（含按资产隔离的子目录）
 Future<void> _cleanupStaleTemp(int maxAgeHours) async {
   final dir = Directory('${(await getTemporaryDirectory()).path}/photo_backup');
   if (!await dir.exists()) return;
   final cutoff = DateTime.now().subtract(Duration(hours: maxAgeHours));
   await for (final entity in dir.list()) {
-    if (entity is! File) continue;
     final stat = await entity.stat();
     if (stat.modified.isBefore(cutoff)) {
       try {
-        await entity.delete();
+        await entity.delete(recursive: entity is Directory);
       } catch (_) {
         // 单个清理失败不影响其余
       }

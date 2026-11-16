@@ -21,6 +21,15 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 进入设置页触发一次非强制扫描（节流控制频率）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(photoBackupRunProvider.notifier).autoScan();
+    });
+  }
+
   Future<void> _runPhotoBackup() async {
     // 权限拒绝/失败原因由 provider 状态展示在卡片副标题
     await ref.read(photoBackupRunProvider.notifier).runNow();
@@ -135,7 +144,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     color: AppTokens.brandPrimary,
                   ),
                   title: '自动备份相册',
-                  subtitle: '开启后新照片/视频自动备份到"相册备份"目录，截图单独归档',
+                  subtitle: runState.lastScanAt == null
+                      ? '开启后新照片/视频自动备份到"相册备份"目录，截图单独归档'
+                      : '上次扫描：${runState.lastScanAt}',
                   trailing: Switch(
                     value: backupEnabled,
                     onChanged: (v) => ref

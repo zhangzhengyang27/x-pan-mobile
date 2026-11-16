@@ -13,14 +13,18 @@ const String kPhotoBackupTask = 'xpan-photo-backup';
 /// 后台 isolate 的引擎组装：直调 UploadService（不走 riverpod UI 状态）。
 /// rootFileId 每次经 /user/info 获取（后台无 authProvider 缓存）。
 PhotoBackupEngine buildBackgroundEngine() {
+  final recordStore = BackupRecordStore();
   return PhotoBackupEngine(
     assetSource: PhotoManagerAssetSource(),
-    recordStore: BackupRecordStore(),
+    recordStore: recordStore,
     dirResolver: _resolveDirBackground,
-    enqueuer: (file, parentId) => UploadService.instance.uploadFile(
-      file: file,
-      parentId: parentId,
-    ),
+    // 后台通道：逐个 await 上传，成功才记（I2 语义：失败不 mark，下次扫描自动重试）
+    enqueuer: (file, parentId, asset) async {
+      await UploadService.instance.uploadFile(file: file, parentId: parentId);
+      final size = await file.length();
+      await recordStore.markBackedUp(
+          asset.assetId, asset.modifiedTime.millisecondsSinceEpoch, size);
+    },
   );
 }
 

@@ -47,13 +47,29 @@ class _NotificationListPageState extends State<NotificationListPage> {
 
   Future<void> _markRead(NotificationItem item) async {
     if (item.readFlag == 1) return;
-    await _api.markRead(item.id);
+    try {
+      await _api.markRead(item.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('标记已读失败：$e')),
+      );
+      return;
+    }
     if (!mounted) return;
     _load(); // 已读状态以服务端为准，刷新列表与未读角标
   }
 
   Future<void> _markAllRead() async {
-    await _api.markAllRead();
+    try {
+      await _api.markAllRead();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('全部已读失败：$e')),
+      );
+      return;
+    }
     if (!mounted) return;
     _load();
   }

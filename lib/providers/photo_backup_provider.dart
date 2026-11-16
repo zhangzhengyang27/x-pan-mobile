@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dart:io';
+
 import '../core/photo/backup_background.dart';
 import '../core/photo/backup_record_store.dart';
 import '../core/photo/photo_asset_source.dart';
@@ -42,21 +44,25 @@ class PhotoBackupRunState {
     this.scanning = false,
     this.lastMessage = '',
     this.lastNeedsPermission = false,
+    this.lastScanAt,
   });
 
   final bool scanning;
   final String lastMessage;
   final bool lastNeedsPermission;
+  final String? lastScanAt;
 
   PhotoBackupRunState copyWith({
     bool? scanning,
     String? lastMessage,
     bool? lastNeedsPermission,
+    String? lastScanAt,
   }) {
     return PhotoBackupRunState(
       scanning: scanning ?? this.scanning,
       lastMessage: lastMessage ?? this.lastMessage,
       lastNeedsPermission: lastNeedsPermission ?? this.lastNeedsPermission,
+      lastScanAt: lastScanAt ?? this.lastScanAt,
     );
   }
 }
@@ -70,17 +76,40 @@ class PhotoBackupRunNotifier extends StateNotifier<PhotoBackupRunState> {
   PhotoBackupRunNotifier(this._ref) : super(const PhotoBackupRunState());
 
   final Ref _ref;
+  final BackupRecordStore _recordStore = BackupRecordStore();
+
+  /// 待确认映射：临时文件路径 → 备份资产（任务终态成功后写记录库）
+  final Map<String, BackupAsset> _pendingByPath = {};
 
   /// 组装 engine（前台通道：经 UploadManager 串行队列，传输页可见）
   PhotoBackupEngine _buildEngine() {
-    final recordStore = BackupRecordStore();
     return PhotoBackupEngine(
       assetSource: PhotoManagerAssetSource(),
-      recordStore: recordStore,
+      recordStore: _recordStore,
       dirResolver: _resolveDir,
-      enqueuer: (file, parentId) =>
-          _ref.read(uploadManagerProvider.notifier).addFile(file, parentId),
+      enqueuer: (file, parentId, asset) {
+        _pendingByPath[file.path] = asset;
+        final manager = _ref.read(uploadManagerProvider.notifier);
+        manager.onTaskSettled = _handleTaskSettled;
+        return manager.addFile(file, parentId);
+      },
     );
+  }
+
+  /// 任务终态：仅"上传成功"才写备份记录（失败/取消不写 → 下次扫描自动重试）。
+  /// 只处理备份来源任务（临时目录 photo_backup/ 下的文件）。
+  Future<void> _handleTaskSettled(UploadTask task) async {
+    if (!task.filePath.contains('photo_backup')) return;
+    final asset = _pendingByPath.remove(task.filePath);
+    if (asset == null) return;
+    if (task.status != UploadStatus.completed) return;
+    try {
+      final size = await File(task.filePath).length();
+      await _recordStore.markBackedUp(
+          asset.assetId, asset.modifiedTime.millisecondsSinceEpoch, size);
+    } catch (_) {
+      // 记录失败不致命：下次扫描按三元组不命中自动重试
+    }
   }
 
   /// 相册备份目录解析：逐级检索/创建（"相册备份" → 子目录），结果缓存在本次会话
@@ -123,6 +152,37 @@ class PhotoBackupRunNotifier extends StateNotifier<PhotoBackupRunState> {
     return null;
   }
 
+  /// 非强制自动扫描（App 启动/进设置页时调用）：遵守 10 分钟节流，
+  /// 未开启备份时静默跳过
+  Future<void> autoScan() async {
+    if (!_ref.read(photoBackupEnabledProvider)) return;
+    await _refreshLastScanAt();
+    if (state.scanning) return;
+    final engine = _buildEngine();
+    try {
+      final result = await engine.scanAndEnqueue(); // force=false → 遵守节流
+      if (result.needsPermission) {
+        state = state.copyWith(lastNeedsPermission: true);
+      }
+    } catch (_) {
+      // 自动扫描失败静默（用户未主动发起）
+    }
+  }
+
+  Future<void> _refreshLastScanAt() async {
+    final sp = await SharedPreferences.getInstance();
+    final ms = sp.getInt('photo_backup_last_scan') ?? 0;
+    String? display;
+    if (ms > 0) {
+      final t = DateTime.fromMillisecondsSinceEpoch(ms);
+      display =
+          '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    }
+    if (mounted && display != state.lastScanAt) {
+      state = state.copyWith(lastScanAt: display);
+    }
+  }
+
   /// 手动"立即备份"
   Future<void> runNow() async {
     if (state.scanning) return;
@@ -143,6 +203,7 @@ class PhotoBackupRunNotifier extends StateNotifier<PhotoBackupRunState> {
         state = state.copyWith(
             lastMessage: '已加入备份队列 ${result.enqueued} 项，可在传输页查看进度');
       }
+      await _refreshLastScanAt();
     } on Exception catch (e) {
       state = state.copyWith(lastMessage: '备份失败：${e.toString()}');
     } finally {

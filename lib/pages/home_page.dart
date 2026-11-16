@@ -14,6 +14,7 @@ import '../models/file_vo.dart';
 import '../models/space_info.dart';
 import '../providers/auth_provider.dart';
 import '../providers/file_provider.dart';
+import '../providers/photo_backup_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/upload_provider.dart';
 import '../services/ai_file_service.dart';
@@ -93,6 +94,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initRoot();
       _refreshUnread();
+      // 相册备份：启动时非强制增量扫描（节流控制，开关关闭时静默跳过）
+      ref.read(photoBackupRunProvider.notifier).autoScan();
     });
   }
 

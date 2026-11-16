@@ -77,7 +77,7 @@ void main() {
       assetSource: source,
       recordStore: store,
       dirResolver: (rel) async => 'folder-${rel.hashCode}',
-      enqueuer: (file, parentId) async => enqueued.add((file, parentId)),
+      enqueuer: (file, parentId, asset) async => enqueued.add((file, parentId)),
       tempRoot: tempDir,
     );
   }
@@ -152,6 +152,41 @@ void main() {
     expect(result.enqueued, kBatchSize); // 首批仅入队 20 个
     expect(result.skipped, 1); // 超出批量的部分留待下次扫描
     expect(enqueued.length, kBatchSize);
+  });
+
+  test('跨实例记录库：新 store 实例也必须读到已备份记录（C1 回归）', () async {
+    final source = FakeAssetSource([
+      FakeBackupAsset(id: 'c1', file: writeAssetFile('c1.jpg', [1]), modified: DateTime(2026, 11, 1)),
+    ]);
+    Future<String> dirResolver(String rel) async => 'folder-${rel.hashCode}';
+    // 第一次扫描：实例 A，enqueuer 模拟"上传成功后 mark"（真实语义）
+    final engineA = PhotoBackupEngine(
+      assetSource: source,
+      recordStore: store,
+      dirResolver: dirResolver,
+      enqueuer: (file, parentId, asset) async {
+        enqueued.add((file, parentId));
+        final size = await file.length();
+        await store.markBackedUp(asset.assetId, asset.modifiedTime.millisecondsSinceEpoch, size);
+      },
+      tempRoot: tempDir,
+    );
+    await engineA.scanAndEnqueue(force: true);
+    expect(enqueued.length, 1);
+
+    // 第二次扫描：全新 recordStore 实例 + 全新引擎（模拟另一次 App 启动/后台任务）
+    final engineB = PhotoBackupEngine(
+      assetSource: source,
+      recordStore: BackupRecordStore(), // 新实例，未 load
+      dirResolver: dirResolver,
+      enqueuer: (file, parentId, asset) async => enqueued.add((file, parentId)),
+      tempRoot: tempDir,
+    );
+    final result = await engineB.scanAndEnqueue(force: true);
+    // C1 回归：新 store 实例必须读到持久化记录
+    // （旧实现读到空缓存 → 每轮重复入队首个资产）
+    expect(result.skipped, 1);
+    expect(enqueued.length, 1);
   });
 
   test('节流：距上次扫描 < 10 分钟且未 force → 跳过', () async {
