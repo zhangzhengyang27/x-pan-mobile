@@ -49,16 +49,29 @@ class UploadTaskStorage {
 
   static const String _key = 'pending_upload_tasks';
 
-  static Future<void> save(UploadTaskRecord record) async {
-    final sp = await SharedPreferences.getInstance();
-    final list = await getAll();
-    // 用 identifier 去重（同一文件覆盖）
-    list.removeWhere((r) => r.identifier == record.identifier);
-    list.add(record);
-    await sp.setString(
-      _key,
-      jsonEncode(list.map((r) => r.toJson()).toList()),
-    );
+  /// 写操作串行化队列：save/remove 都是"读全部 → 修改 → 整串写回"，
+  /// 并发调用时后写覆盖先写（丢任务记录）。所有写操作按提交顺序串行执行。
+  static Future<void> _writeQueue = Future.value();
+
+  static Future<T> _serialized<T>(Future<T> Function() action) {
+    final result = _writeQueue.then((_) => action());
+    // 队列不得因单次失败而停摆
+    _writeQueue = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  static Future<void> save(UploadTaskRecord record) {
+    return _serialized(() async {
+      final sp = await SharedPreferences.getInstance();
+      final list = await getAll();
+      // 用 identifier 去重（同一文件覆盖）
+      list.removeWhere((r) => r.identifier == record.identifier);
+      list.add(record);
+      await sp.setString(
+        _key,
+        jsonEncode(list.map((r) => r.toJson()).toList()),
+      );
+    });
   }
 
   static Future<List<UploadTaskRecord>> getAll() async {
@@ -76,13 +89,15 @@ class UploadTaskStorage {
   }
 
   /// 移除已完成/取消的任务
-  static Future<void> remove(String identifier) async {
-    final sp = await SharedPreferences.getInstance();
-    final list = await getAll();
-    list.removeWhere((r) => r.identifier == identifier);
-    await sp.setString(
-      _key,
-      jsonEncode(list.map((r) => r.toJson()).toList()),
-    );
+  static Future<void> remove(String identifier) {
+    return _serialized(() async {
+      final sp = await SharedPreferences.getInstance();
+      final list = await getAll();
+      list.removeWhere((r) => r.identifier == identifier);
+      await sp.setString(
+        _key,
+        jsonEncode(list.map((r) => r.toJson()).toList()),
+      );
+    });
   }
 }
