@@ -89,6 +89,8 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   pdfx: ^2.9.2
   image: ^4.3.0
+  photo_manager: ^3.6.0
+  workmanager: ^0.9.0
 
 dev_dependencies:
   flutter_test:
