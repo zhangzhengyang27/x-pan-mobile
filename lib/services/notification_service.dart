@@ -159,6 +159,7 @@ class NotificationService {
   }
 
   void _onData(dynamic raw) {
+    _lastServerActivity = DateTime.now();
     try {
       final map = jsonDecode(raw as String) as Map<String, dynamic>;
       final msg = NoticeMessage.fromJson(map);
@@ -187,20 +188,49 @@ class NotificationService {
     }
   }
 
+  DateTime? _lastServerActivity;
+
   void _startHeartbeat() {
+    _lastServerActivity = DateTime.now();
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(
-      const Duration(seconds: 25),
-      (_) => send(jsonEncode({'type': 'PING', 'ts': DateTime.now().millisecondsSinceEpoch})),
-    );
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      // 半开连接检测：两个心跳周期内没有任何服务端消息（含 PONG/ping），
+      // 本地 TCP 仍在但对端已失联——主动关闭触发重连，而不是继续空转
+      if (isStale(_lastServerActivity, DateTime.now())) {
+        try {
+          _channel?.sink.close();
+        } catch (_) {
+          // 忽略关闭异常（onDone/onError 会走重连）
+        }
+        return;
+      }
+      send(jsonEncode({'type': 'PING', 'ts': DateTime.now().millisecondsSinceEpoch}));
+    });
+  }
+
+  /// 重连延迟：前 8 次指数退避（1s → 30s 封顶）；耗尽后降级为 60s 低频长周期。
+  /// 旧实现耗尽即永久放弃——地铁断网约 2 分钟即耗尽，出网后通知永久失效，
+  /// 需手动杀 App 或重新登录才能恢复。
+  static Duration reconnectDelay(int attempts) {
+    if (attempts >= 8) {
+      return const Duration(seconds: 60);
+    }
+    return Duration(milliseconds: (1000 * (1 << attempts)).clamp(1000, 30000));
+  }
+
+  /// 半开连接判定：超过两个心跳周期（心跳 25s × 2 = 50s）未收到服务端任何消息。
+  /// 旧实现只发 PING 不校验回包——半开连接下 _connected 恒为 true，消息通道悄悄失效。
+  static bool isStale(DateTime? lastServerActivity, DateTime now) {
+    if (lastServerActivity == null) return false;
+    return now.difference(lastServerActivity) > const Duration(seconds: 50);
   }
 
   void _scheduleReconnect() {
-    if (_disposed || _reconnectAttempts >= 8) return;
-    final delay = (1000 * (1 << _reconnectAttempts)).clamp(1000, 30000);
+    if (_disposed) return;
+    final delay = reconnectDelay(_reconnectAttempts);
     _reconnectAttempts++;
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(Duration(milliseconds: delay), () {
+    _reconnectTimer = Timer(delay, () {
       _reconnectTimer = null;
       // 重连时刷新 token（可能已续期）
       TokenStorage.getToken().then((token) {

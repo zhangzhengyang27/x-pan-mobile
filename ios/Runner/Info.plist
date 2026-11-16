@@ -62,7 +62,9 @@
 	<!-- 允许明文 HTTP（开发阶段后端为 http:// 地址） -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<!-- 收紧（2026-11-16）：远程一律强制 ATS/HTTPS；仅放行本地网络明文
+		     （模拟器/真机连本机调试），替代全局 NSAllowsArbitraryLoads -->
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 </dict>

@@ -8,8 +8,11 @@
     <application
         android:label="X Pan"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:icon="@mipmap/ic_launcher">
+        <!-- 明文流量收紧（2026-11-16）：release 构建禁止 HTTP 明文，防止登录密码/Token
+             被中间人窃取。本地开发（http://localhost / 10.0.2.2 / 127.0.0.1）由
+             src/debug、src/profile 的 AndroidManifest 放行；真机连局域网调试建议
+             adb reverse tcp:8081 tcp:8081 后走 127.0.0.1 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
