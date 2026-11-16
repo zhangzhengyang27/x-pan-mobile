@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/photo/backup_background.dart';
 import '../core/photo/backup_record_store.dart';
 import '../core/photo/photo_asset_source.dart';
 import '../core/photo/photo_backup_engine.dart';
@@ -30,6 +31,8 @@ class PhotoBackupEnabledNotifier extends StateNotifier<bool> {
     state = value;
     final sp = await SharedPreferences.getInstance();
     await sp.setBool(_key, value);
+    // 后台周期任务随开关注册/取消
+    await setPhotoBackupWork(value);
   }
 }
 
