@@ -85,6 +85,7 @@ class PhotoBackupEngine {
         }
       }
       final result = await _scanAndEnqueueInner(sp);
+      await recordStore.endBatch();
       await sp.setInt(kLastScanKey, DateTime.now().millisecondsSinceEpoch);
       return result;
     } finally {
@@ -96,11 +97,14 @@ class PhotoBackupEngine {
     // C1：先加载持久化记录（markBackedUp 只在自己实例触发 load，
     // 新实例/新 isolate 的判定若不 load 会读到空缓存 → 每轮重复入队首个资产）
     await recordStore.load();
+    recordStore.beginBatch();
     if (!await assetSource.ensurePermission()) {
       return const BackupScanResult(scanned: 0, enqueued: 0, skipped: 0, needsPermission: true);
     }
     await cleanupTemp();
 
+    // M2：photo_manager getAssetListRange 上限 10000——超过时最老资产不被扫描
+    //（后续可改为按相册分页遍历；当前个人项目场景 1 万张图片罕见）
     final assets = await assetSource.recentAssets();
     final dirIdCache = <String, String>{};
     int enqueued = 0;

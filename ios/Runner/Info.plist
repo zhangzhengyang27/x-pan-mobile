@@ -60,6 +60,10 @@
 		</dict>
 	</array>
 	<!-- 允许明文 HTTP（开发阶段后端为 http:// 地址） -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.xpan.photo-backup</string>
+	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于扫描相册并备份您的照片和视频到您的网盘</string>
 	<key>NSAppTransportSecurity</key>

@@ -63,7 +63,8 @@ class PhotoManagerAssetSource implements PhotoAssetSource {
       ),
     );
     if (paths.isEmpty) return [];
-    final recent = paths.first; // "最近照片"聚合相册（覆盖全量媒体）
+    // M3：聚合相册假设加固——优先取 isAll=true 的聚合项，兜底取首项
+    final recent = paths.where((p) => p.isAll).firstOrNull ?? paths.first;
     final assets = await recent.getAssetListRange(start: 0, end: 10000);
     return assets.map(_toBackupAsset).whereType<BackupAsset>().toList();
   }
