@@ -89,6 +89,13 @@ Future<void> _download(BuildContext context, FileVO file) async {
 
 /// 解析缩略图/封面直链（带尺寸参数，对齐前端 resolvePreviewUrl）。
 ///
+/// 封面直链会话级缓存：fileId+尺寸 → {url, 签发时间}。
+/// 分类页/时间线大量瓦片各自请求签名直链会形成 N+1——同 fileId 的
+/// in-flight 请求合并、已签发的 4 分钟内复用（ptoken TTL 约 5 分钟）。
+final Map<String, (String, DateTime)> _coverUrlCache = {};
+final Map<String, Future<String?>> _coverUrlInFlight = {};
+const Duration _coverUrlCacheTtl = Duration(minutes: 4);
+
 /// 优先使用后端返回的 `thumbnail`/`fileCover`，否则按需解析预览直链。
 /// 音频无封面直链意义，直接返回 null（由调用方降级为类型图标）。
 Future<String?> resolveCoverUrl(
@@ -102,6 +109,28 @@ Future<String?> resolveCoverUrl(
   if (file.fileType != FileType.image && file.fileType != FileType.video) {
     return null;
   }
+  final key = '${file.fileId}@$width@$height';
+  final hit = _coverUrlCache[key];
+  if (hit != null &&
+      DateTime.now().difference(hit.$2) < _coverUrlCacheTtl) {
+    return hit.$1;
+  }
+  _coverUrlCache.remove(key); // 过期条目移除，走重签
+  final inflight = _coverUrlInFlight[key];
+  if (inflight != null) return inflight;
+  final future = _resolveUncached(file, width, height);
+  _coverUrlInFlight[key] = future;
+  final resolved = await future;
+  _coverUrlInFlight.remove(key);
+  if (resolved != null) _coverUrlCache[key] = (resolved, DateTime.now());
+  return resolved;
+}
+
+Future<String?> _resolveUncached(
+  FileVO file,
+  int width,
+  int height,
+) async {
   try {
     return await FileService.instance.resolvePreviewUrl(
       file.fileId,

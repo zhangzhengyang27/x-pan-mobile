@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../providers/upload_provider.dart';
+import '../providers/notification_provider.dart';
+import '../services/notification_service.dart' show NoticeType;
 import '../services/offline_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
@@ -198,6 +200,17 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
   void initState() {
     super.initState();
     _load();
+    // WS 联动：离线任务状态变化/删除通知到达时刷新列表，
+    // 否则切到传输页看到的是启动时的旧数据（IndexedStack 常驻子页）
+    ref.listen(notificationProvider, (prev, next) {
+      final currFirst =
+          next.notices.isNotEmpty ? next.notices.first.type : null;
+      if (currFirst == null) return;
+      if (currFirst == NoticeType.offlineTaskUpdate ||
+          currFirst == NoticeType.offlineTaskRemoved) {
+        _load();
+      }
+    });
   }
 
   Future<void> _load() async {
