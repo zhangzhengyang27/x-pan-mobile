@@ -40,6 +40,7 @@ import '../widgets/responsive.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/tag_dialog.dart';
 import 'ai_assistant_page.dart';
+import 'chat_page.dart';
 import 'dashboard_page.dart';
 import 'favorite_page.dart';
 import 'home/home_components.dart';
@@ -1121,6 +1122,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       children: [
         const HomeDashboard(),
         activeBody,
+        const ChatPage(),
         const TransferPage(),
         const AIAssistantPage(),
         const ProfilePage(),
@@ -1164,6 +1166,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                   icon: Icon(Icons.folder_outlined),
                   selectedIcon: Icon(Icons.folder),
                   label: '文件',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: '消息',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.upload_file_outlined),

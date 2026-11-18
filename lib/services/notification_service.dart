@@ -16,6 +16,12 @@ enum NoticeType {
   shareStatsUpdate,
   uploadFinished,
   systemNotice,
+  chatNew,
+  chatRead,
+  chatRecall,
+  chatFriendApply,
+  chatGroupInvite,
+  chatGroupDismissed,
   unknown;
 
   static NoticeType fromString(String s) {
@@ -36,6 +42,18 @@ enum NoticeType {
         return NoticeType.uploadFinished;
       case 'SYSTEM_NOTICE':
         return NoticeType.systemNotice;
+      case 'CHAT_NEW':
+        return NoticeType.chatNew;
+      case 'CHAT_READ':
+        return NoticeType.chatRead;
+      case 'CHAT_RECALL':
+        return NoticeType.chatRecall;
+      case 'CHAT_FRIEND_APPLY':
+        return NoticeType.chatFriendApply;
+      case 'CHAT_GROUP_INVITE':
+        return NoticeType.chatGroupInvite;
+      case 'CHAT_GROUP_DISMISSED':
+        return NoticeType.chatGroupDismissed;
       default:
         return NoticeType.unknown;
     }
@@ -93,6 +111,9 @@ class NotificationService {
 
   /// 通知回调（type -> message）
   void Function(NoticeMessage message)? onMessage;
+
+  /// 聊天事件回调（CHAT_*；与 onMessage 并行，互不影响）
+  void Function(NoticeMessage message)? onChatMessage;
 
   /// 连接状态变化回调
   void Function(bool connected)? onConnectionChanged;
@@ -169,6 +190,15 @@ class NotificationService {
         return;
       }
       onMessage?.call(msg);
+      // 聊天事件并行通道：onMessage 单槽被通知 Provider 占用，聊天 Provider 独立挂载
+      if (msg.type == NoticeType.chatNew ||
+          msg.type == NoticeType.chatRead ||
+          msg.type == NoticeType.chatRecall ||
+          msg.type == NoticeType.chatFriendApply ||
+          msg.type == NoticeType.chatGroupInvite ||
+          msg.type == NoticeType.chatGroupDismissed) {
+        onChatMessage?.call(msg);
+      }
     } catch (_) {
       // 忽略解析失败
     }
