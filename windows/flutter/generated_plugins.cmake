@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   flutter_secure_storage_windows
   pdfx
+  record_windows
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
