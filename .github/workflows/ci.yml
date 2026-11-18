@@ -33,6 +33,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 钉到与本地开发一致的版本，防止 stable 漂移引入新弃用（2026-11-18 CI 实锤）
+          flutter-version: 3.47.1
           channel: stable
           cache: true
           cache-key: flutter-xpan-mobile
@@ -76,6 +78,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 钉到与本地开发一致的版本，防止 stable 漂移引入新弃用（2026-11-18 CI 实锤）
+          flutter-version: 3.47.1
           channel: stable
           cache: true
           cache-key: flutter-xpan-mobile-android
@@ -104,6 +108,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 钉到与本地开发一致的版本，防止 stable 漂移引入新弃用（2026-11-18 CI 实锤）
+          flutter-version: 3.47.1
           channel: stable
           cache: true
           cache-key: flutter-xpan-mobile-ios
@@ -125,6 +131,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 钉到与本地开发一致的版本，防止 stable 漂移引入新弃用（2026-11-18 CI 实锤）
+          flutter-version: 3.47.1
           channel: stable
           cache: true
           cache-key: flutter-xpan-mobile-macos
@@ -146,6 +154,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 钉到与本地开发一致的版本，防止 stable 漂移引入新弃用（2026-11-18 CI 实锤）
+          flutter-version: 3.47.1
           channel: stable
           cache: true
           cache-key: flutter-xpan-mobile-windows
