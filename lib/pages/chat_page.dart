@@ -219,15 +219,29 @@ class _ChatPageState extends ConsumerState<ChatPage>
                 children: [
                   TextButton(
                     onPressed: () async {
-                      await ChatService.instance.acceptFriendApply(apply.id);
-                      if (mounted) ref.read(chatNotifierProvider.notifier).refresh();
+                      try {
+                        await ChatService.instance.acceptFriendApply(apply.id);
+                        if (mounted) ref.read(chatNotifierProvider.notifier).refresh();
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('操作失败：$e')));
+                        }
+                      }
                     },
                     child: const Text('同意'),
                   ),
                   TextButton(
                     onPressed: () async {
-                      await ChatService.instance.rejectFriendApply(apply.id);
-                      if (mounted) ref.read(chatNotifierProvider.notifier).refresh();
+                      try {
+                        await ChatService.instance.rejectFriendApply(apply.id);
+                        if (mounted) ref.read(chatNotifierProvider.notifier).refresh();
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('操作失败：$e')));
+                        }
+                      }
                     },
                     child: const Text('拒绝'),
                   ),
@@ -372,14 +386,21 @@ class _ChatPageState extends ConsumerState<ChatPage>
             FilledButton(
               onPressed: () async {
                 if (nameCtrl.text.trim().isEmpty || selected.isEmpty) return;
-                final conv = await ChatService.instance
-                    .createGroup(nameCtrl.text.trim(), selected.toList());
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) ref.read(chatNotifierProvider.notifier).refresh();
-                if (mounted) {
-                  await Navigator.of(context).push(tokens.AppTokens.route(
-                    ChatDetailPage(conversationId: conv.conversationId),
-                  ));
+                try {
+                  final conv = await ChatService.instance
+                      .createGroup(nameCtrl.text.trim(), selected.toList());
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (mounted) ref.read(chatNotifierProvider.notifier).refresh();
+                  if (mounted) {
+                    await Navigator.of(context).push(tokens.AppTokens.route(
+                      ChatDetailPage(conversationId: conv.conversationId),
+                    ));
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('创建失败：$e')));
+                  }
                 }
               },
               child: const Text('创建'),

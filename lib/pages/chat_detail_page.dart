@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -8,7 +10,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
-import '../core/config/app_config.dart';
 import '../core/network/http_client.dart';
 import '../core/theme/app_tokens.dart';
 import '../models/chat_vo.dart';
@@ -47,6 +48,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     '😀', '😂', '🤝', '👍', '🎉', '🔥', '❤️', '🙏', '😮', '😢', '🚀', '✅'
   ];
 
+  final Map<int, Uint8List> _mediaBytes = {};
+
   @override
   void initState() {
     super.initState();
@@ -54,7 +57,28 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     _myUserId = ref.read(authProvider).user?.userId ?? '';
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatNotifierProvider.notifier).loadMessages(widget.conversationId);
+      ref.read(chatNotifierProvider.notifier).setActiveDetail(widget.conversationId);
     });
+  }
+
+  /// 媒体字节流：/chat/media 走登录切面，Image.network 带不上 Authorization 头
+  /// （C-1 修复）：经 dio 下载字节后喂 Image.memory / just_audio setBytes
+  Future<Uint8List?> _loadMediaBytes(int mediaId) async {
+    if (_mediaBytes.containsKey(mediaId)) return _mediaBytes[mediaId];
+    try {
+      final response = await HttpClient.instance.dio
+          .get<List<int>>('/chat/media/$mediaId',
+              options: Options(responseType: ResponseType.bytes));
+      final bytes = response.data;
+      if (bytes is List<int>) {
+        final data = Uint8List.fromList(bytes);
+        _mediaBytes[mediaId] = data;
+        return data;
+      }
+    } catch (_) {
+      // 失败回落 errorBuilder
+    }
+    return null;
   }
 
   @override
@@ -64,6 +88,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     _player.dispose();
     _recordTimer?.cancel();
     _recorder.dispose();
+    ref.read(chatNotifierProvider.notifier).setActiveDetail(null);
     super.dispose();
   }
 
@@ -104,12 +129,25 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
 
   Future<void> _sendText() async {
     final content = _draftCtrl.text.trim();
-    if (content.isEmpty) return;
-    _draftCtrl.clear();
-    if (mounted) setState(() => _showEmoji = false);
-    await _send(() => ref
-        .read(chatNotifierProvider.notifier)
-        .send(widget.conversationId, 'TEXT', content: content));
+    if (content.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await ref
+          .read(chatNotifierProvider.notifier)
+          .send(widget.conversationId, 'TEXT', content: content);
+      if (mounted) {
+        // 成功后清草稿：失败保留原文可重试
+        _draftCtrl.clear();
+        setState(() => _showEmoji = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('发送失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   Future<void> _sendImage() async {
@@ -118,10 +156,10 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     final file = result?.files.single;
     if (file == null || file.bytes == null) return;
     await _send(() async {
-      final mediaId = await _service.uploadMedia(MultipartFile.fromBytes(
-        file.bytes!,
-        filename: file.name,
-      ));
+      final mediaId = await _service.uploadMedia(
+        MultipartFile.fromBytes(file.bytes!, filename: file.name),
+        mediaType: 'IMAGE',
+      );
       await ref.read(chatNotifierProvider.notifier).send(
           widget.conversationId, 'IMAGE',
           mediaId: mediaId);
@@ -171,17 +209,30 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
 
   Future<void> _toggleRecord() async {
     if (_recording) {
-      final path = await _recorder.stop();
+      String? path;
+      try {
+        path = await _recorder.stop();
+      } catch (e) {
+        if (mounted) {
+          setState(() => _recording = false);
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('录音结束异常：$e')));
+        }
+        return;
+      }
       _recordTimer?.cancel();
       if (mounted) setState(() => _recording = false);
       if (path == null) return;
+      final voicePath = path;
       final seconds = _recordSeconds;
       await _send(() async {
-        final mediaId = await _service.uploadMedia(
-            await MultipartFile.fromFile(path, filename: 'voice.m4a'));
+        final file = await MultipartFile.fromFile(voicePath, filename: 'voice.m4a');
+        final mediaId = await _service.uploadMedia(file,
+            mediaType: 'VOICE',
+            durationMs: seconds * 1000);
         await ref.read(chatNotifierProvider.notifier).send(
             widget.conversationId, 'VOICE',
-            mediaId: mediaId, content: '${seconds * 1000}');
+            mediaId: mediaId, content: '$seconds');
       });
       return;
     }
@@ -218,7 +269,13 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
 
   Future<void> _playVoice(int mediaId) async {
     try {
-      await _player.setUrl('${AppConfig.apiBaseUrl}/chat/media/$mediaId');
+      final bytes = await _loadMediaBytes(mediaId);
+      if (bytes == null) throw Exception('语音加载失败');
+      // just_audio 无 setBytes：写临时文件后 setFilePath
+      final docsDir = await getApplicationDocumentsDirectory();
+      final temp = File('${docsDir.path}/voice-cache-$mediaId.m4a');
+      await temp.writeAsBytes(bytes);
+      await _player.setFilePath(temp.path);
       await _player.play();
     } catch (e) {
       if (mounted) {
@@ -229,7 +286,14 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
   }
 
   Future<void> _recall(ChatMessageVO message) async {
-    await ref.read(chatNotifierProvider.notifier).recall(message);
+    try {
+      await ref.read(chatNotifierProvider.notifier).recall(message);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('撤回失败：$e')));
+      }
+    }
   }
 
   Future<void> _forward(ChatMessageVO message) async {
@@ -275,32 +339,30 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
       ),
     );
     if (confirmed == true && targets.isNotEmpty) {
-      await ref
-          .read(chatNotifierProvider.notifier)
-          .forward(message, targets.toList());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已转发到 ${targets.length} 个会话')));
+      try {
+        await ref
+            .read(chatNotifierProvider.notifier)
+            .forward(message, targets.toList());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已转发到 ${targets.length} 个会话')));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('转发失败：$e')));
+        }
       }
     }
   }
 
   Future<void> _transfer(ChatMessageVO message) async {
     try {
-      final dio = HttpClient.instance.dio;
-      final response = await dio.request<dynamic>('/file/transfer',
-          data: {
-            'fileIds': [message.fileId],
-            'targetParentId': '-1'
-          },
-          options: Options(method: 'POST'));
-      final map = response.data as Map<String, dynamic>;
+      // 服务端跨用户 copy（校验会话成员 + 配额），落我的网盘根目录
+      await _service.saveFileCard(message.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(map['code'] == 0
-              ? '已转存到我的网盘'
-              : '转存失败：${map['message']}'),
-        ));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已转存到我的网盘')));
       }
     } catch (e) {
       if (mounted) {
@@ -523,11 +585,18 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
         return [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              '${AppConfig.apiBaseUrl}/chat/media/${message.mediaId}',
-              width: 180,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Text('[图片加载失败]'),
+            child: FutureBuilder<Uint8List?>(
+              future: _loadMediaBytes(message.mediaId),
+              builder: (ctx, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                      width: 180, height: 120,
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+                }
+                final bytes = snap.data;
+                if (bytes == null) return const Text('[图片加载失败]');
+                return Image.memory(bytes, width: 180, fit: BoxFit.cover);
+              },
             ),
           ),
         ];

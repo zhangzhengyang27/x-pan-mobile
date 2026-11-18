@@ -141,14 +141,30 @@ class ChatService {
   }
 
   /// 上传聊天媒体（图片/语音），返回 mediaId
-  Future<int> uploadMedia(MultipartFile file) async {
+  /// [mediaType] IMAGE/VOICE；VOICE 必须传 durationMs（后端 60s 上限校验）
+  Future<int> uploadMedia(MultipartFile file,
+      {required String mediaType, int? durationMs}) async {
     final response = await _dio.request<dynamic>('/chat/media',
-        data: FormData.fromMap({'file': file}),
+        data: FormData.fromMap({
+          'file': file,
+          'mediaType': mediaType,
+          if (durationMs != null) 'durationMs': durationMs,
+        }),
         options: Options(method: 'POST'));
     final map = response.data as Map<String, dynamic>;
+    if (map['code'] == 10) {
+      // token 失效：与统一错误处理同款广播，避免停留"已登录"假态
+      HttpClient.notifyNeedRelogin();
+      throw Exception('登录已失效，请重新登录');
+    }
     if (map['code'] != 0) {
       throw Exception(map['message'] ?? '媒体上传失败');
     }
     return ((map['data'] as Map<String, dynamic>)['mediaId'] as num).toInt();
+  }
+
+  /// 文件卡片转存到我的网盘根目录（服务端跨用户 copy，校验配额）
+  Future<void> saveFileCard(int messageId) {
+    return _http.request<dynamic>('/chat/messages/$messageId/save', method: 'POST');
   }
 }

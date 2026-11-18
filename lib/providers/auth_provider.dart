@@ -7,6 +7,7 @@ import '../core/storage/token_storage.dart';
 import '../models/user_info.dart';
 import '../services/user_service.dart';
 import 'notification_provider.dart';
+import 'chat_provider.dart';
 
 /// 认证状态
 enum AuthStatus { unknown, unauthenticated, authenticated }
@@ -107,6 +108,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
     // 停止实时通知并复位（收敛在此统一处理，使下次登录 start() 能完整重建连接）
     _ref?.read(notificationProvider.notifier).stop();
+        _ref?.invalidate(chatNotifierProvider);
     await TokenStorage.clearToken();
     await TokenStorage.clearSpaceId();
     state = const AuthState(status: AuthStatus.unauthenticated);
@@ -119,6 +121,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     // 已在未登录态则跳过，避免并发 code=10 触发重复处理
     if (state.status == AuthStatus.unauthenticated) return;
     _ref?.read(notificationProvider.notifier).stop();
+        _ref?.invalidate(chatNotifierProvider);
     await TokenStorage.clearToken();
     await TokenStorage.clearSpaceId();
     state = const AuthState(status: AuthStatus.unauthenticated);
