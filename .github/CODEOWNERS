@@ -1,0 +1,6 @@
+# 默认代码所有者：所有变更至少需要一名 Owner 评审
+* @zhangzhengyang27
+
+/.github/ @zhangzhengyang27
+/lib/core/network/ @zhangzhengyang27
+/lib/providers/ @zhangzhengyang27

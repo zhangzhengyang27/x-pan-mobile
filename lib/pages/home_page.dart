@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,19 +8,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_config.dart';
 import '../core/theme/app_tokens.dart';
+import '../core/storage/token_storage.dart';
 import '../core/storage/upload_task_storage.dart';
 import '../models/file_vo.dart';
+import '../models/space_info.dart';
 import '../providers/auth_provider.dart';
 import '../providers/file_provider.dart';
+import '../providers/photo_backup_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/upload_provider.dart';
 import '../services/ai_file_service.dart';
+import '../services/deep_link_service.dart';
+import '../services/notification_api.dart';
+import 'notification_list_page.dart';
 import '../services/download_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/extract_service.dart';
 import '../services/favorite_service.dart';
 import '../services/llm_service.dart';
 import '../services/share_service.dart';
+import '../services/space_service.dart';
 import '../services/upload_service.dart';
 import '../services/vault_service.dart';
 import '../utils/file_open.dart';
@@ -43,6 +51,7 @@ import 'recycle_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'share_page.dart';
+import 'space_management_page.dart';
 import 'file/category_files_page.dart';
 import 'upload_task_page.dart';
 import '../providers/view_mode_provider.dart';
@@ -61,6 +70,10 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   bool _initialized = false;
+  /// 根目录初始化失败（弱网冷启动且重试拉取用户信息仍失败）
+  bool _rootLoadFailed = false;
+  StreamSubscription<String>? _deepLinkSub;
+  bool _handlingInvite = false;
 
   /// 下载进度（H13：这三个字段实际驱动文件下载进度条）
   bool _downloading = false;
@@ -75,18 +88,66 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initRoot());
+    _deepLinkSub = DeepLinkService.instance.inviteCodeStream.listen((_) {
+      _maybeHandleInvite();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initRoot();
+      _refreshUnread();
+      // 相册备份：启动时非强制增量扫描（节流控制，开关关闭时静默跳过）
+      ref.read(photoBackupRunProvider.notifier).autoScan();
+    });
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _initRoot() async {
     if (_initialized) return;
     final auth = ref.read(authProvider);
-    final rootId = auth.user?.rootFileId;
-    if (rootId == null || rootId.isEmpty) return;
+    var rootId = auth.user?.rootFileId;
+    if (rootId == null || rootId.isEmpty) {
+      // 弱网启动会进入"已登录但 user 为空"的离线态——恢复网络后这里重试拉取
+      // 用户信息；否则文件页永久停在误导性的"空文件夹"死路（刷新/重进均无效）
+      await ref.read(authProvider.notifier).refreshUser();
+      rootId = ref.read(authProvider).user?.rootFileId;
+      if (rootId == null || rootId.isEmpty) {
+        if (mounted) setState(() => _rootLoadFailed = true);
+        return;
+      }
+    }
+    if (mounted && _rootLoadFailed) setState(() => _rootLoadFailed = false);
     _initialized = true;
+    String activeRootId = rootId;
+    String activeRootName = auth.user?.rootFilename ?? '全部文件';
+    // 恢复上次选择的团队空间（若已解散/被移除则回退个人空间）
+    try {
+      final spaceId = await TokenStorage.getSpaceId();
+      if (spaceId.isNotEmpty) {
+        final spaces = await SpaceService.instance.list();
+        SpaceInfo? matched;
+        for (final space in spaces) {
+          if (space.spaceId == spaceId && space.isTeam) {
+            matched = space;
+            break;
+          }
+        }
+        if (matched != null && matched.rootFileId.isNotEmpty) {
+          activeRootId = matched.rootFileId;
+          activeRootName = matched.spaceName;
+        } else {
+          await TokenStorage.setSpaceId('');
+        }
+      }
+    } catch (_) {
+      // 空间列表加载失败时按个人空间继续
+    }
     await ref
         .read(fileListProvider.notifier)
-        .initRoot(rootId, auth.user?.rootFilename ?? '全部文件');
+        .initRoot(activeRootId, activeRootName);
     await _checkPendingUploads();
     // 启动实时通知
     await ref.read(notificationProvider.notifier).start();
@@ -96,6 +157,163 @@ class _HomePageState extends ConsumerState<HomePage> {
     } catch (_) {
       // 忽略权限请求失败
     }
+    // 登录后处理冷启动/运行中收到的邀请深链
+    await _maybeHandleInvite();
+  }
+
+  /// 处理邀请深链：预览空间 → 确认加入 → 切换到该空间
+  Future<void> _maybeHandleInvite() async {
+    if (_handlingInvite) return;
+    final code = DeepLinkService.instance.takePendingCode();
+    if (code == null || code.isEmpty) return;
+    final auth = ref.read(authProvider);
+    if (auth.user == null) {
+      // 尚未登录：保留邀请码，登录进入首页后重试
+      DeepLinkService.instance.restorePendingCode(code);
+      return;
+    }
+    _handlingInvite = true;
+    try {
+      final preview = await SpaceService.instance.previewInvite(code);
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('加入团队空间'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('空间：${preview.spaceName}'),
+              const SizedBox(height: AppTokens.space4),
+              Text('邀请人：${preview.inviterUsername}'),
+              Text('成员：${preview.memberCount} 人'),
+              const SizedBox(height: AppTokens.space12),
+              Text(
+                preview.alreadyMember ? '你已经是该空间成员。' : '加入后即可访问团队共享文件。',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(preview.alreadyMember ? '进入空间' : '加入'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+
+      SpaceInfo joined;
+      if (preview.alreadyMember) {
+        final spaces = await SpaceService.instance.list();
+        SpaceInfo? matched;
+        for (final space in spaces) {
+          if (space.spaceId == preview.spaceId) {
+            matched = space;
+            break;
+          }
+        }
+        if (matched == null) {
+          throw Exception('空间不存在或已解散');
+        }
+        joined = matched;
+      } else {
+        joined = await SpaceService.instance.join(code);
+      }
+      await TokenStorage.setSpaceId(joined.isTeam ? joined.spaceId : '');
+      await ref.read(fileListProvider.notifier).initRoot(
+            joined.rootFileId,
+            joined.isTeam ? joined.spaceName : '全部文件',
+          );
+      _toast('已进入「${joined.spaceName}」');
+    } catch (e) {
+      _toast('加入空间失败：$e');
+    } finally {
+      _handlingInvite = false;
+    }
+  }
+
+  /// 空间切换：个人空间 / 团队空间
+  Future<void> _showSpacePicker() async {
+    List<SpaceInfo> spaces;
+    try {
+      spaces = await SpaceService.instance.list();
+    } catch (e) {
+      _toast('空间列表加载失败');
+      return;
+    }
+    if (!mounted) return;
+    final selected = await showModalBottomSheet<SpaceInfo>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final brightness = Theme.of(context).brightness;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppTokens.space16,
+                  0,
+                  AppTokens.space16,
+                  AppTokens.space8,
+                ),
+                child: Text(
+                  '切换空间',
+                  style: AppTokens.titleMedium.copyWith(
+                    color: AppTokens.textPrimary(brightness),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              for (final space in spaces)
+                ListTile(
+                  leading: Icon(
+                    space.isTeam
+                        ? Icons.groups_outlined
+                        : Icons.person_outline,
+                  ),
+                  title: Text(space.isTeam ? space.spaceName : '个人空间'),
+                  subtitle: Text(
+                    space.isTeam
+                        ? '${space.memberCount} 名成员 · ${space.role}'
+                        : '仅自己可见',
+                  ),
+                  trailing: space.role == 'VIEWER'
+                      ? const Text('只读', style: TextStyle(fontSize: 12))
+                      : null,
+                  onTap: () => Navigator.of(context).pop(space),
+                ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('管理团队空间'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Future.microtask(() {
+                    if (mounted) _openPage(const SpaceManagementPage());
+                  });
+                },
+              ),
+              const SizedBox(height: AppTokens.space8),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    await TokenStorage.setSpaceId(selected.isTeam ? selected.spaceId : '');
+    await ref.read(fileListProvider.notifier).initRoot(
+          selected.rootFileId,
+          selected.isTeam ? selected.spaceName : '全部文件',
+        );
   }
 
   /// 检测未完成的上传任务并提示恢复
@@ -134,6 +352,49 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _refresh() => ref.read(fileListProvider.notifier).refresh();
+
+  int _unreadCount = 0;
+
+  Future<void> _refreshUnread() async {
+    try {
+      final count = await NotificationApi.instance().unreadCount();
+      if (!mounted) return;
+      setState(() => _unreadCount = count);
+    } catch (_) {
+      // 未读数获取失败静默（角标维持原值）
+    }
+  }
+
+  void _openNotifications() async {
+    await Navigator.of(context).push(AppTokens.route(const NotificationListPage()));
+    if (mounted) _refreshUnread();
+  }
+
+  /// 根目录初始化失败的恢复态：明确报错 + 重试，替代"空文件夹"误导
+  Widget _buildRootFailure(Brightness brightness) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off_outlined,
+              size: 48, color: AppTokens.textSecondary(brightness)),
+          const SizedBox(height: AppTokens.space16),
+          Text(
+            '网络连接失败，无法加载你的文件',
+            style: AppTokens.bodyMedium.copyWith(
+              color: AppTokens.textSecondary(brightness),
+            ),
+          ),
+          const SizedBox(height: AppTokens.space16),
+          OutlinedButton.icon(
+            onPressed: _initRoot,
+            icon: const Icon(Icons.refresh),
+            label: const Text('重试'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _goBack() => ref.read(fileListProvider.notifier).goBack();
 
@@ -853,11 +1114,13 @@ class _HomePageState extends ConsumerState<HomePage> {
     // 移动端底部 TabBar（首页/文件/传输/AI/我的）；完整功能已分散到各 Tab 与我的页
     final onFilesTab = _mobileTabIndex == 1;
     final brightness = Theme.of(context).brightness;
+    // 弱网冷启动拿不到根目录：展示可重试的错误态，而不是误导性的"空文件夹"
+    final activeBody = _rootLoadFailed ? _buildRootFailure(brightness) : mainBody;
     final mobileTabStack = IndexedStack(
       index: _mobileTabIndex,
       children: [
         const HomeDashboard(),
-        mainBody,
+        activeBody,
         const TransferPage(),
         const AIAssistantPage(),
         const ProfilePage(),
@@ -878,7 +1141,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   },
                 ),
                 const VerticalDivider(width: 1),
-                Expanded(child: mainBody),
+                Expanded(child: activeBody),
               ],
             )
           : mobileTabStack,
@@ -1054,6 +1317,12 @@ class _HomePageState extends ConsumerState<HomePage> {
         ],
       ),
       actions: [
+        _NotificationBellButton(onOpen: _openNotifications, unread: _unreadCount),
+        IconButton(
+          icon: const Icon(Icons.swap_horiz),
+          tooltip: '切换空间',
+          onPressed: _showSpacePicker,
+        ),
         IconButton(
           icon: Icon(
             ref.watch(fileViewModeProvider).viewMode == FileViewMode.list
@@ -1508,6 +1777,50 @@ class _CategoryShortcut extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// 通知铃铛（对齐 Web 端 NotificationBell）：未读角标 + 点击进入通知中心
+class _NotificationBellButton extends StatelessWidget {
+  const _NotificationBellButton({required this.onOpen, required this.unread});
+
+  final VoidCallback onOpen;
+  final int unread;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.notifications_outlined),
+          if (unread > 0)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.error,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Text(
+                  unread > 99 ? '99+' : '$unread',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      tooltip: '通知中心',
+      onPressed: onOpen,
     );
   }
 }

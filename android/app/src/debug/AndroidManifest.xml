@@ -4,4 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 本地开发：允许连接本地/模拟器后端（仅 debug/profile 构建） -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

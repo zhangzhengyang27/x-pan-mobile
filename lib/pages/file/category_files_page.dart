@@ -41,6 +41,9 @@ class _CategoryFilesPageState extends ConsumerState<CategoryFilesPage> {
   List<FileVO> _files = const [];
   bool _loading = true;
   String? _error;
+  /// 分类视图一次拉取的最大条数：命中即说明可能被服务端上限截断，需要提示
+  static const int _pageSize = 1000;
+  bool _truncated = false;
 
   _CategoryKind get _kind {
     switch (widget.title) {
@@ -73,10 +76,14 @@ class _CategoryFilesPageState extends ConsumerState<CategoryFilesPage> {
         // -1 表示全盘（后端跳过 parent_id 过滤），跨目录按类型聚合查询
         parentId: '-1',
         fileTypes: widget.fileTypesParam,
+        // 服务端默认 50 条——超过会被静默截断，用户会误以为文件丢了；
+        // 一次拉到服务端上限（1000），命中上限时给出截断提示
+        pageSize: _pageSize,
       );
       if (!mounted) return;
       setState(() {
         _files = res.records;
+        _truncated = res.total > res.records.length;
         _loading = false;
       });
     } on NeedReloginException {
@@ -133,7 +140,30 @@ class _CategoryFilesPageState extends ConsumerState<CategoryFilesPage> {
                       icon: Icons.folder_open_outlined,
                       title: '该分类下暂无文件',
                     )
-                  : _buildBody(mode.viewMode),
+                  : Column(
+                      children: [
+                        if (_truncated)
+                          Material(
+                            color: AppTokens.surfaceElevated(brightness),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppTokens.space16,
+                                  vertical: AppTokens.space8,
+                                ),
+                                child: Text(
+                                  '仅显示前 $_pageSize 个（共 ${_files.length} 个已加载），请用搜索缩小范围',
+                                  style: AppTokens.bodySmall.copyWith(
+                                    color: AppTokens.textSecondary(brightness),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Expanded(child: _buildBody(mode.viewMode)),
+                      ],
+                    ),
     );
   }
 

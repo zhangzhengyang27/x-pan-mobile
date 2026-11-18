@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:x_pan_mobile/models/api_response.dart';
+import 'package:x_pan_mobile/models/file_edit.dart';
 import 'package:x_pan_mobile/models/file_vo.dart';
 import 'package:x_pan_mobile/models/user_info.dart';
 
@@ -127,6 +128,45 @@ void main() {
       expect(user.rootFileId, 'root');
       expect(user.usedSize, 100);
       expect(user.totalSize, 1000);
+    });
+  });
+
+  group('文件在线编辑模型', () {
+    test('FileDetail 解析', () {
+      final detail = FileDetail.fromJson({
+        'fileId': 'f1',
+        'filename': 'note.md',
+        'version': 3,
+        'editable': true,
+        'sizeBytes': 128,
+        'contentHash': 'abc',
+      });
+      expect(detail.fileId, 'f1');
+      expect(detail.filename, 'note.md');
+      expect(detail.version, 3);
+      expect(detail.editable, isTrue);
+      expect(detail.sizeBytes, 128);
+    });
+
+    test('EditSession 解析', () {
+      final session = EditSession.fromJson({
+        'lockToken': 'token-1',
+        'expireAt': 1700000000000,
+        'version': 2,
+      });
+      expect(session.lockToken, 'token-1');
+      expect(session.version, 2);
+    });
+
+    test('FileContentSaveResult 解析', () {
+      final result = FileContentSaveResult.fromJson({
+        'version': 4,
+        'contentHash': 'def',
+        'sizeBytes': 256,
+      });
+      expect(result.version, 4);
+      expect(result.contentHash, 'def');
+      expect(result.sizeBytes, 256);
     });
   });
 }

@@ -45,10 +45,32 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- 邀请深链：xpan://join?code=xxx -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.xiaoye.xpan.mobile</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>xpan</string>
+			</array>
+		</dict>
+	</array>
 	<!-- 允许明文 HTTP（开发阶段后端为 http:// 地址） -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.xpan.photo-backup</string>
+	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于扫描相册并备份您的照片和视频到您的网盘</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<!-- 收紧（2026-11-16）：远程一律强制 ATS/HTTPS；仅放行本地网络明文
+		     （模拟器/真机连本机调试），替代全局 NSAllowsArbitraryLoads -->
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 </dict>

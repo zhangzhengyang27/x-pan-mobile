@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,16 +20,61 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
+  final _emailCodeCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  bool _sendingCode = false;
+  int _countdown = 0;
+  Timer? _timer;
+
+  static final _emailPattern =
+      RegExp(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
 
   @override
   void dispose() {
+    _timer?.cancel();
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
     _emailCtrl.dispose();
+    _emailCodeCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendEmailCode() async {
+    final email = _emailCtrl.text.trim();
+    if (!_emailPattern.hasMatch(email)) {
+      _toast('请输入正确的邮箱地址');
+      return;
+    }
+    if (_sendingCode || _countdown > 0) return;
+    setState(() => _sendingCode = true);
+    try {
+      await UserService.instance.sendEmailCode(email: email, scene: 'REGISTER');
+      if (!mounted) return;
+      _toast('验证码已发送，请查收邮箱');
+      setState(() => _countdown = 60);
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          _countdown -= 1;
+          if (_countdown <= 0) timer.cancel();
+        });
+      });
+    } catch (e) {
+      _toast(e.toString());
+    } finally {
+      if (mounted) setState(() => _sendingCode = false);
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _submit() async {
@@ -37,7 +84,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       await UserService.instance.register(
         username: _usernameCtrl.text.trim(),
         password: _passwordCtrl.text,
-        email: _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        emailCode: _emailCodeCtrl.text.trim(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -166,12 +214,48 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                           const SizedBox(height: AppTokens.space16),
                           TextFormField(
                             controller: _emailCtrl,
-                            textInputAction: TextInputAction.done,
+                            textInputAction: TextInputAction.next,
                             keyboardType: TextInputType.emailAddress,
                             decoration: const InputDecoration(
-                              labelText: '邮箱（可选）',
+                              labelText: '邮箱',
                               prefixIcon: Icon(Icons.email_outlined),
                             ),
+                            validator: (v) {
+                              if (v == null || !_emailPattern.hasMatch(v.trim())) {
+                                return '请输入正确的邮箱地址';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: AppTokens.space16),
+                          TextFormField(
+                            controller: _emailCodeCtrl,
+                            textInputAction: TextInputAction.done,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            decoration: InputDecoration(
+                              labelText: '邮箱验证码',
+                              counterText: '',
+                              prefixIcon: const Icon(Icons.verified_outlined),
+                              suffixIcon: TextButton(
+                                onPressed: _countdown > 0 || _sendingCode
+                                    ? null
+                                    : _sendEmailCode,
+                                child: Text(
+                                  _countdown > 0
+                                      ? '${_countdown}s'
+                                      : _sendingCode
+                                          ? '发送中…'
+                                          : '获取验证码',
+                                ),
+                              ),
+                            ),
+                            validator: (v) {
+                              if (v == null || !RegExp(r'^\d{6}$').hasMatch(v)) {
+                                return '请输入 6 位邮箱验证码';
+                              }
+                              return null;
+                            },
                           ),
                           const SizedBox(height: AppTokens.space24),
                           _buildSubmitButton(brightness),

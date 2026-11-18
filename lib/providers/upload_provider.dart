@@ -106,6 +106,10 @@ class UploadManager extends StateNotifier<UploadQueueState> {
   int _idSeq = 0;
   bool _processing = false;
 
+  /// 单任务终态回调（上传成功/失败/取消后触发）。
+  /// 供"上传成功才确认"的场景使用（如相册备份记录库）。
+  void Function(UploadTask task)? onTaskSettled;
+
   /// 添加文件到上传队列
   ///
   /// [resumeIdentifier]：跨重启恢复时传入已计算的 identifier（跳过 MD5 计算）。
@@ -181,23 +185,27 @@ class UploadManager extends StateNotifier<UploadQueueState> {
         resumeIdentifier: task.resumeIdentifier,
       );
       _updateTask(task.id, (t) => t.copyWith(status: UploadStatus.completed));
+      onTaskSettled?.call(_taskById(task.id)!);
     } on ApiException catch (e) {
       if (e.code == UploadService.cancelException.code) {
         _updateTask(
           task.id,
           (t) => t.copyWith(status: UploadStatus.cancelled),
         );
+        onTaskSettled?.call(_taskById(task.id)!);
       } else {
         _updateTask(
           task.id,
           (t) => t.copyWith(status: UploadStatus.failed, error: e.message),
         );
+        onTaskSettled?.call(_taskById(task.id)!);
       }
     } catch (e) {
       _updateTask(
         task.id,
         (t) => t.copyWith(status: UploadStatus.failed, error: e.toString()),
       );
+      onTaskSettled?.call(_taskById(task.id)!);
     } finally {
       _uploadService.onProgress = null;
       _uploadService.onCheckCancel = null;

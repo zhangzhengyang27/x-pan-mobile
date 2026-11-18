@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workmanager/workmanager.dart';
 
+import 'core/photo/backup_background.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'router/app_router.dart';
+import 'services/deep_link_service.dart';
 import 'services/local_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 初始化本地通知（后台系统推送）
   await LocalNotificationService.instance.init();
+  // 初始化邀请深链监听（冷启动 + 运行中）
+  await DeepLinkService.instance.init();
+  // 初始化 Workmanager（相册备份后台周期任务；回调在独立 isolate）
+  await Workmanager().initialize(callbackDispatcher);
   runApp(const ProviderScope(child: XPanApp()));
 }
 

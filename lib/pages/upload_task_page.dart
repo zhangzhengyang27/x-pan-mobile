@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../providers/upload_provider.dart';
+import '../providers/notification_provider.dart';
+import '../services/notification_service.dart' show NoticeType;
 import '../services/offline_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
@@ -198,11 +202,37 @@ class _OfflineTasksViewState extends ConsumerState<_OfflineTasksView> {
   void initState() {
     super.initState();
     _load();
+    // WS 联动：离线任务状态变化/删除通知到达时刷新列表（2s trailing 防抖——
+    // 后端进度推送最高 500ms/条，不防抖会高频列表请求），且静默刷新不置骨架屏
+    ref.listen(notificationProvider, (prev, next) {
+      final currFirst =
+          next.notices.isNotEmpty ? next.notices.first.type : null;
+      if (currFirst == null) return;
+      if (currFirst == NoticeType.offlineTaskUpdate ||
+          currFirst == NoticeType.offlineTaskRemoved) {
+        _debouncedLoad();
+      }
+    });
   }
 
-  Future<void> _load() async {
+  Timer? _loadDebounce;
+
+  void _debouncedLoad() {
+    _loadDebounce?.cancel();
+    _loadDebounce = Timer(const Duration(seconds: 2), () {
+      if (mounted) _load(quiet: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _loadDebounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool quiet = false}) async {
     setState(() {
-      _loading = true;
+      if (!quiet) _loading = true;
       _error = null;
     });
     try {

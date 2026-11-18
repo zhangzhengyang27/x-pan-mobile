@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -62,7 +65,47 @@ class DownloadService {
       },
     );
 
+    // 嗅探业务错误：登录切面对 /file/download 同样生效，token 失效或业务失败时
+    // 后端返回 HTTP 200 + JSON——不检查就会把错误 JSON 存成"下载成功"的损坏文件
+    final savedFile = File(savePath);
+    if (await savedFile.length() <= _businessErrorProbeBytes) {
+      final head = utf8.decode(await savedFile.readAsBytes(), allowMalformed: true);
+      final error = tryParseBusinessError(head);
+      if (error != null) {
+        await savedFile.delete();
+        final code = error['code'] as int;
+        final message = error['message'] as String? ?? '下载失败';
+        if (code == 10) {
+          HttpClient.notifyNeedRelogin();
+          throw const NeedReloginException();
+        }
+        throw ApiException(code, message);
+      }
+    }
+
     return savePath;
+  }
+
+  /// 业务错误探测上限：超过该体积的文件不做 JSON 嗅探（真实大文件几乎不可能是错误体）
+  static const int _businessErrorProbeBytes = 64 * 1024;
+
+  /// 识别"业务错误 JSON"：对象且含整型 code 字段。
+  /// 返回错误体 Map；真实文件内容返回 null。
+  /// 注意：用户下载恰好形如 {"code":N} 的 .json 数据文件存在误判可能——
+  /// 与 Web 端拦截器采用同一权衡（后端对 blob 接口的失败一律返回该业务体）。
+  static Map<String, dynamic>? tryParseBusinessError(String head) {
+    final trimmed = head.trimLeft();
+    if (!trimmed.startsWith('{')) return null;
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(trimmed);
+    } on FormatException {
+      return null;
+    }
+    if (decoded is! Map) return null;
+    final code = decoded['code'];
+    if (code is! int) return null;
+    return Map<String, dynamic>.from(decoded);
   }
 
   /// 文件名消毒：过滤路径分隔符与控制字符，防止目录逃逸；

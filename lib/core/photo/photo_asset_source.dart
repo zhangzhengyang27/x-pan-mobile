@@ -1,0 +1,125 @@
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
+import 'package:photo_manager/photo_manager.dart';
+
+import 'backup_classifier.dart';
+
+/// 相册资产抽象（隔离 photo_manager，测试注入 fake）
+abstract class BackupAsset {
+  BackupAsset({
+    required this.assetId,
+    required this.fileName,
+    required this.modifiedTime,
+    required this.takenTime,
+    required this.isVideo,
+    required this.isScreenshot,
+  });
+
+  final String assetId;
+  final String fileName; // 原文件名（photo_manager AssetEntity.title），保留不改
+  final DateTime modifiedTime;
+  final DateTime? takenTime;
+  final bool isVideo;
+  final bool isScreenshot;
+
+  /// 落临时文件（原图副本，保留原文件名）；失败返回 null（调用方跳过并记录）。
+  /// 路径按 assetId 隔离（photo_backup/\<assetId\>/\<title\>）：同名资产（跨月/跨相册
+  /// 的 IMG_1234.jpg 常见）互不覆盖——旧实现的扁平同名路径会让后到者覆盖
+  /// 先到者尚未上传完的内容，造成"错误内容被备份 + 原内容静默漏备"。
+  Future<File?> toFile() async {
+    final origin = await originFile();
+    if (origin == null) return null;
+    final dir = Directory(
+        '${(await getTemporaryDirectory()).path}/photo_backup/$assetId');
+    await dir.create(recursive: true);
+    final target = File('${dir.path}/$fileName');
+    if (target.path == origin.path) return origin;
+    return origin.copy(target.path);
+  }
+
+  Future<File?> originFile();
+}
+
+abstract class PhotoAssetSource {
+  Future<bool> ensurePermission();
+  Future<List<BackupAsset>> recentAssets();
+}
+
+/// photo_manager 实现
+class PhotoManagerAssetSource implements PhotoAssetSource {
+  @override
+  Future<bool> ensurePermission() async {
+    final state = await PhotoManager.requestPermissionExtend();
+    return state.isAuth;
+  }
+
+  @override
+  Future<List<BackupAsset>> recentAssets() async {
+    final paths = await PhotoManager.getAssetPathList(
+      type: RequestType.common,
+      filterOption: FilterOptionGroup(
+        orders: [const OrderOption(type: OrderOptionType.updateDate, asc: false)],
+      ),
+    );
+    if (paths.isEmpty) return [];
+    // M3：聚合相册假设加固——优先取 isAll=true 的聚合项，兜底取首项
+    final recent = paths.where((p) => p.isAll).firstOrNull ?? paths.first;
+    final assets = await recent.getAssetListRange(start: 0, end: 10000);
+    return assets.map(_toBackupAsset).whereType<BackupAsset>().toList();
+  }
+
+  BackupAsset? _toBackupAsset(AssetEntity asset) {
+    final isVideo = asset.type == AssetType.video;
+    final isScreenshot = BackupClassifier.detectScreenshot(
+      title: asset.title,
+      relativePath: asset.relativePath,
+    );
+    return PhotoManagerBackupAsset(
+      entity: asset,
+      assetId: asset.id,
+      fileName: asset.title ?? '${asset.id}.${isVideo ? 'mp4' : 'jpg'}',
+      modifiedTime: asset.modifiedDateTime,
+      takenTime: asset.createDateTime,
+      isVideo: isVideo,
+      isScreenshot: isScreenshot,
+    );
+  }
+}
+
+class PhotoManagerBackupAsset extends BackupAsset {
+  PhotoManagerBackupAsset({
+    required super.assetId,
+    required super.fileName,
+    required super.modifiedTime,
+    required super.takenTime,
+    required super.isVideo,
+    required super.isScreenshot,
+    required this.entity,
+  });
+
+  final AssetEntity entity;
+
+  @override
+  Future<File?> originFile() => entity.originFile;
+}
+
+/// 清理 photo_backup/ 临时目录中超过 maxAgeHours 的残留副本（含按资产隔离的子目录）
+Future<void> _cleanupStaleTemp(int maxAgeHours) async {
+  final dir = Directory('${(await getTemporaryDirectory()).path}/photo_backup');
+  if (!await dir.exists()) return;
+  final cutoff = DateTime.now().subtract(Duration(hours: maxAgeHours));
+  await for (final entity in dir.list()) {
+    final stat = await entity.stat();
+    if (stat.modified.isBefore(cutoff)) {
+      try {
+        await entity.delete(recursive: entity is Directory);
+      } catch (_) {
+        // 单个清理失败不影响其余
+      }
+    }
+  }
+}
+
+/// engine 可直接调用的公共清理入口
+Future<void> cleanupStaleTempFiles(int maxAgeHours) => _cleanupStaleTemp(maxAgeHours);

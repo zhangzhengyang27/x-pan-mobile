@@ -71,6 +71,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// 刷新当前用户信息（绑定邮箱、修改资料后调用）
+  Future<void> refreshUser() async {
+    try {
+      final user = await _userService.info();
+      state = state.copyWith(status: AuthStatus.authenticated, user: user);
+    } catch (_) {
+      // 刷新失败保留当前状态，不影响已登录会话
+    }
+  }
+
   /// 登录
   ///
   /// 登录接口返回的是 JWT token，先保存 token，再拉取用户信息。
@@ -98,6 +108,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     // 停止实时通知并复位（收敛在此统一处理，使下次登录 start() 能完整重建连接）
     _ref?.read(notificationProvider.notifier).stop();
     await TokenStorage.clearToken();
+    await TokenStorage.clearSpaceId();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
@@ -109,6 +120,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (state.status == AuthStatus.unauthenticated) return;
     _ref?.read(notificationProvider.notifier).stop();
     await TokenStorage.clearToken();
+    await TokenStorage.clearSpaceId();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
