@@ -50,6 +50,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final Ref _ref;
   final ChatService _service = ChatService.instance;
 
+  /// 当前打开的详情页会话（用于 WS 新消息自动已读）
+  int? _activeDetailConversationId;
+
+  void setActiveDetail(int? conversationId) {
+    _activeDetailConversationId = conversationId;
+    if (conversationId != null) _markReadToMax(conversationId);
+  }
+
   String get _currentUsername =>
       _ref.read(authProvider).user?.username ?? '';
 
@@ -199,7 +207,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _onNewMessage(Map<String, dynamic>? payload) {
     if (payload == null) return;
     final message = ChatMessageVO.fromJson(payload);
-    _appendMessages(message.conversationId, [message]);
+    final isOpen = state.messagesByConv.containsKey(message.conversationId);
+    if (isOpen) {
+      _appendMessages(message.conversationId, [message]);
+      if (message.conversationId == _activeDetailConversationId &&
+          message.senderUsername != _currentUsername) {
+        _markReadToMax(message.conversationId);
+      }
+    }
 
     final list = [...state.conversations];
     final index =
@@ -216,7 +231,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       unread: newUnread,
       lastMsgPreview: _preview(message),
     );
-    list.sort((a, b) => b.unread.compareTo(a.unread));
+    list.sort((a, b) => b.maxSeq.compareTo(a.maxSeq));
     state = state.copyWith(conversations: list);
   }
 
