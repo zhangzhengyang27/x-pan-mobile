@@ -5,18 +5,21 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import 'auth_provider.dart';
 
-/// 会话状态（列表 + 未读聚合 + WS 事件接入）
+/// 会话状态（列表 + 消息缓存 + 未读聚合 + WS 事件接入）
 class ChatState {
   const ChatState({
     this.conversations = const [],
     this.friends = const [],
     this.applies = const [],
+    this.messagesByConv = const {},
     this.loaded = false,
   });
 
   final List<ChatConversationVO> conversations;
   final List<ChatFriendVO> friends;
   final List<ChatFriendApplyVO> applies;
+  /// 已打开会话的消息缓存（升序；WS 实时追加）
+  final Map<int, List<ChatMessageVO>> messagesByConv;
   final bool loaded;
 
   int get totalUnread =>
@@ -26,12 +29,14 @@ class ChatState {
     List<ChatConversationVO>? conversations,
     List<ChatFriendVO>? friends,
     List<ChatFriendApplyVO>? applies,
+    Map<int, List<ChatMessageVO>>? messagesByConv,
     bool? loaded,
   }) {
     return ChatState(
       conversations: conversations ?? this.conversations,
       friends: friends ?? this.friends,
       applies: applies ?? this.applies,
+      messagesByConv: messagesByConv ?? this.messagesByConv,
       loaded: loaded ?? this.loaded,
     );
   }
@@ -66,16 +71,124 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  /// 首屏加载某会话消息（已有缓存则 afterSeq 增量）
+  Future<void> loadMessages(int conversationId) async {
+    final cached = state.messagesByConv[conversationId];
+    if (cached == null) {
+      // 占位空条目：空会话也视为已加载，避免详情页永久 loading
+      state = state.copyWith(
+          messagesByConv: {
+            ...state.messagesByConv,
+            conversationId: <ChatMessageVO>[]
+          });
+    }
+    try {
+      List<ChatMessageVO> fetched;
+      if (cached != null && cached.isNotEmpty) {
+        fetched = await _service.messages(conversationId,
+            afterSeq: cached.last.seq);
+      } else {
+        fetched = await _service.messages(conversationId, limit: 50);
+      }
+      _appendMessages(conversationId, fetched);
+      await _markReadToMax(conversationId);
+    } catch (_) {
+      // 保留旧缓存
+    }
+  }
+
+  void _appendMessages(int conversationId, List<ChatMessageVO> incoming) {
+    if (incoming.isEmpty) return;
+    final map = Map<int, List<ChatMessageVO>>.from(state.messagesByConv);
+    final list = <ChatMessageVO>[...(map[conversationId] ?? const <ChatMessageVO>[])];
+    final seen = list.map((m) => m.id).toSet();
+    for (final message in incoming) {
+      if (!seen.contains(message.id)) list.add(message);
+    }
+    list.sort((a, b) => a.seq.compareTo(b.seq));
+    map[conversationId] = list;
+    state = state.copyWith(messagesByConv: map);
+  }
+
+  void _markRecalled(int conversationId, int messageId) {
+    final map = Map<int, List<ChatMessageVO>>.from(state.messagesByConv);
+    final list = map[conversationId];
+    if (list == null) return;
+    map[conversationId] = list
+        .map((m) => m.id == messageId ? m.copyWith(status: 'RECALLED') : m)
+        .toList();
+    state = state.copyWith(messagesByConv: map);
+  }
+
+  Future<void> _markReadToMax(int conversationId) async {
+    final conv = state.conversations
+        .where((c) => c.conversationId == conversationId)
+        .toList();
+    if (conv.isEmpty) return;
+    final target = state.messagesByConv[conversationId]?.isEmpty ?? true
+        ? conv.first.maxSeq
+        : state.messagesByConv[conversationId]!.last.seq;
+    if (conv.first.lastReadSeq >= target) return;
+    try {
+      await _service.markRead(conversationId, target);
+      final updated = state.conversations
+          .map((c) => c.conversationId == conversationId
+              ? ChatConversationVO(
+                  conversationId: c.conversationId,
+                  type: c.type,
+                  groupName: c.groupName,
+                  displayName: c.displayName,
+                  peerUserId: c.peerUserId,
+                  peerOnline: c.peerOnline,
+                  lastMsgPreview: c.lastMsgPreview,
+                  maxSeq: c.maxSeq,
+                  lastReadSeq: target,
+                  unread: c.maxSeq > target ? c.maxSeq - target : 0,
+                  role: c.role,
+                )
+              : c)
+          .toList();
+      state = state.copyWith(conversations: updated);
+    } catch (_) {
+      // 已读失败不阻塞
+    }
+  }
+
+  /// 发送后由调用方 append 返回的消息；WS 事件去重兜底
+  Future<void> send(int conversationId, String msgType,
+      {String? content, String? fileId, int? mediaId}) async {
+    final message = await _service.sendMessage(conversationId, msgType,
+        content: content, fileId: fileId, mediaId: mediaId);
+    _appendMessages(conversationId, [message]);
+  }
+
+  Future<void> recall(ChatMessageVO message) async {
+    await _service.recallMessage(message.id);
+    _markRecalled(message.conversationId, message.id);
+  }
+
+  Future<void> forward(ChatMessageVO message, List<int> targetIds) async {
+    await _service.forwardMessage(message.id, targetIds);
+  }
+
   void _onWsMessage(NoticeMessage message) {
     switch (message.type) {
       case NoticeType.chatNew:
         _onNewMessage(message.payload as Map<String, dynamic>?);
         break;
+      case NoticeType.chatRecall:
+        final payload = message.payload as Map<String, dynamic>? ?? {};
+        final conversationId = (payload['conversationId'] as num?)?.toInt();
+        final messageId = (payload['messageId'] as num?)?.toInt();
+        if (conversationId != null && messageId != null) {
+          _markRecalled(conversationId, messageId);
+        }
+        refresh();
+        break;
       case NoticeType.chatFriendApply:
       case NoticeType.chatGroupInvite:
       case NoticeType.chatGroupDismissed:
       case NoticeType.chatRead:
-      case NoticeType.chatRecall:
         refresh();
         break;
       default:
@@ -86,6 +199,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _onNewMessage(Map<String, dynamic>? payload) {
     if (payload == null) return;
     final message = ChatMessageVO.fromJson(payload);
+    _appendMessages(message.conversationId, [message]);
+
     final list = [...state.conversations];
     final index =
         list.indexWhere((c) => c.conversationId == message.conversationId);
