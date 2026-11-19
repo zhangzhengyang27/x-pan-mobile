@@ -100,4 +100,16 @@ class UploadTaskStorage {
       );
     });
   }
+
+  /// 清空全部待续传记录（退出登录/会话失效时调用）
+  ///
+  /// 记录里有上一账号的 parentId 与本地路径；不清理会让下一个账号登录后
+  /// 误把旧账号的续传任务带入（轻则权限失败，重则跨账号写入）。
+  /// 与 save/remove 共用串行队列，避免清理和正在进行的 upload 写回互相覆盖。
+  static Future<void> clear() {
+    return _serialized(() async {
+      final sp = await SharedPreferences.getInstance();
+      await sp.remove(_key);
+    });
+  }
 }

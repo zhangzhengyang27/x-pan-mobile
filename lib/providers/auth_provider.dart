@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/network/http_client.dart';
 import '../core/storage/token_storage.dart';
+import '../core/storage/upload_task_storage.dart';
 import '../models/user_info.dart';
 import '../services/user_service.dart';
 import 'notification_provider.dart';
@@ -111,6 +112,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _ref?.invalidate(chatNotifierProvider);
     await TokenStorage.clearToken();
     await TokenStorage.clearSpaceId();
+    // 上传续传记录绑定的是上一账号的 parentId/本地路径，登录态切换时必须清空
+    await UploadTaskStorage.clear();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
@@ -124,6 +127,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _ref?.invalidate(chatNotifierProvider);
     await TokenStorage.clearToken();
     await TokenStorage.clearSpaceId();
+    // 会话失效同样清理，避免账号切换后把旧任务带入新账号
+    await UploadTaskStorage.clear();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
