@@ -30,11 +30,18 @@ void main() {
     });
 
     test('两个心跳周期内收到过消息不判定为半开', () {
-      expect(NotificationService.isStale(now.subtract(const Duration(seconds: 49)), now), isFalse);
+      final inside = NotificationService.staleAfter - const Duration(seconds: 1);
+      expect(NotificationService.isStale(now.subtract(inside), now), isFalse);
     });
 
-    test('超过两个心跳周期（>50s）无消息判定为半开', () {
-      expect(NotificationService.isStale(now.subtract(const Duration(seconds: 51)), now), isTrue);
+    test('超过两个心跳周期无消息判定为半开', () {
+      final outside = NotificationService.staleAfter + const Duration(seconds: 1);
+      expect(NotificationService.isStale(now.subtract(outside), now), isTrue);
+    });
+
+    test('默认阈值与服务端 30s 心跳匹配（25s × 2）', () {
+      expect(NotificationService.heartbeatSeconds, 25);
+      expect(NotificationService.staleAfter, const Duration(seconds: 50));
     });
   });
 }
