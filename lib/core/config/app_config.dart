@@ -22,6 +22,7 @@ class AppConfig {
   /// 分片大小：5MB（对齐后端 MinIO composeObject 合并要求）
   static const int chunkSize = 1024 * 1024 * 5;
 
-  /// 最大文件大小：3GB
-  static const int maxFileSize = 1024 * 1024 * 1024 * 3;
+  /// 最大文件大小：20GB（对齐后端 FileConstants.MAX_FILE_SIZE）
+  /// 默认 5MB 分片下需 4096 片，正好等于后端 MAX_TOTAL_CHUNKS 上限。
+  static const int maxFileSize = 1024 * 1024 * 1024 * 20;
 }
