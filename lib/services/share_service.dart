@@ -1,4 +1,5 @@
 import '../core/network/http_client.dart';
+import '../models/api_response.dart';
 import '../models/file_vo.dart';
 
 /// 将任意 Map 安全转为 `Map<String, dynamic>`
@@ -221,18 +222,25 @@ class ShareService {
     );
   }
 
-  /// 分享文件列表（需 Share-Token 头）
-  Future<List<FileVO>> fileList({
+  /// 分享文件列表（需 Share-Token 头；按目录一层分页）
+  Future<PageVO<FileVO>> fileList({
     required String parentId,
     required String shareToken,
+    int pageNum = 1,
+    int pageSize = 100,
   }) {
-    return _http.request<List<FileVO>>(
+    return _http.request<PageVO<FileVO>>(
       '/share/file/list',
-      query: {'parentId': parentId},
+      query: {
+        'parentId': parentId,
+        'pageNum': pageNum,
+        'pageSize': pageSize,
+      },
       extraHeaders: {'Share-Token': shareToken},
-      dataDecoder: (json) => (json as List<dynamic>)
-          .map((e) => FileVO.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      dataDecoder: (json) => PageVO.fromJson(
+        json as Map<String, dynamic>,
+        (e) => FileVO.fromJson(e as Map<String, dynamic>),
+      ),
     );
   }
 

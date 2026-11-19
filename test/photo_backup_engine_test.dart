@@ -19,7 +19,11 @@ class FakeAssetSource implements PhotoAssetSource {
   }
 
   @override
-  Future<List<BackupAsset>> recentAssets() async => assets;
+  Future<List<BackupAsset>> assetPage({required int offset, required int limit}) async {
+    if (offset >= assets.length) return [];
+    final end = offset + limit < assets.length ? offset + limit : assets.length;
+    return assets.sublist(offset, end);
+  }
 }
 
 /// fake 资产：toFile 返回预生成的真实临时文件（size 由文件内容决定）
@@ -138,7 +142,7 @@ void main() {
     expect(result.enqueued, 0);
   });
 
-  test('分批入队：21 个新资产首批 20 个，剩余留待下次扫描', () async {
+  test('单次扫描可入队多个资产，不再固定 20 个', () async {
     final assets = <BackupAsset>[];
     for (var i = 0; i < 21; i++) {
       assets.add(FakeBackupAsset(
@@ -149,9 +153,39 @@ void main() {
     }
     final result = await buildEngine(FakeAssetSource(assets)).scanAndEnqueue(force: true);
 
-    expect(result.enqueued, kBatchSize); // 首批仅入队 20 个
-    expect(result.skipped, 1); // 超出批量的部分留待下次扫描
-    expect(enqueued.length, kBatchSize);
+    expect(result.enqueued, 21);
+    expect(result.skipped, 0);
+    expect(enqueued.length, 21);
+  });
+
+  test('maxEnqueue 限制单次入队，未处理资产留待下次扫描', () async {
+    final assets = <BackupAsset>[];
+    for (var i = 0; i < 30; i++) {
+      assets.add(FakeBackupAsset(
+        id: 'm$i',
+        file: writeAssetFile('m$i.jpg', [i]),
+        modified: DateTime(2026, 11, 1),
+      ));
+    }
+    final engine = PhotoBackupEngine(
+      assetSource: FakeAssetSource(assets),
+      recordStore: store,
+      dirResolver: (rel) async => 'folder-${rel.hashCode}',
+      enqueuer: (file, parentId, asset) async {
+        enqueued.add((file, parentId));
+        // 模拟真实"上传成功才 mark"；未处理资产下次扫描仍可被选中
+        await store.markBackedUp(
+            asset.assetId, asset.modifiedTime.millisecondsSinceEpoch, await file.length());
+      },
+      tempRoot: tempDir,
+    );
+    final first = await engine.scanAndEnqueue(force: true, maxEnqueue: 10);
+    expect(first.enqueued, 10);
+    expect(enqueued.length, 10);
+
+    final second = await engine.scanAndEnqueue(force: true, maxEnqueue: 10);
+    expect(second.enqueued, 10);
+    expect(enqueued.length, 20);
   });
 
   test('跨实例记录库：新 store 实例也必须读到已备份记录（C1 回归）', () async {
