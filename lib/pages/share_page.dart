@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../services/share_service.dart';
+import '../utils/e2ee_share.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/responsive.dart';
@@ -123,16 +124,39 @@ class _SharePageState extends ConsumerState<SharePage> {
     if (input == null || input.isEmpty) return;
 
     // 从链接中提取 shareId（形如 .../share/{shareId} 或纯 shareId）
-    final shareId = _extractShareId(input);
-    if (shareId == null) {
+    final target = _parseShareInput(input);
+    if (target == null) {
       _toast('无效的分享链接');
       return;
     }
     if (mounted) {
       Navigator.of(context).push(
-        AppTokens.route(ShareDetailPage(shareId: shareId)),
+        AppTokens.route(ShareDetailPage(
+          shareId: target.shareId,
+          e2eeKey: target.key,
+          e2eeIv: target.iv,
+        )),
       );
     }
+  }
+
+  /// 解析链接：shareId + E2EE fragment 密钥
+  ///
+  /// fragment 不会随 HTTP 请求发送到服务端，只能由客户端从用户粘贴的完整链接里取；
+  /// 仅分享列表里的 shareUrl 不含密钥，因此从列表进入 E2EE 分享时只能提示缺少密钥。
+  _ShareTarget? _parseShareInput(String input) {
+    final uri = Uri.tryParse(input);
+    final fragment = uri?.fragment.isNotEmpty == true
+        ? parseE2eeFragment(uri!.fragment)
+        : parseE2eeFragment(input);
+    final shareId = _extractShareId(uri != null ? uri.path : input) ??
+        _extractShareId(input);
+    if (shareId == null) return null;
+    return _ShareTarget(
+      shareId: shareId,
+      key: fragment?['key'],
+      iv: fragment?['iv'],
+    );
   }
 
   String? _extractShareId(String input) {
@@ -301,7 +325,7 @@ class _SharePageState extends ConsumerState<SharePage> {
               ),
               const SizedBox(height: AppTokens.space8),
               Text(
-                '${_typeText(share.shareType)}'
+                '${share.e2ee ? '端到端加密' : _typeText(share.shareType)}'
                 '${share.shareType == 0 && share.shareCode.isNotEmpty ? ' · 提取码: ${share.shareCode}' : ''}'
                 '${_expireText(share)}',
                 style: AppTokens.bodySmall.copyWith(
@@ -345,4 +369,13 @@ class _SharePageState extends ConsumerState<SharePage> {
       },
     );
   }
+}
+
+/// 打开分享的解析结果
+class _ShareTarget {
+  const _ShareTarget({required this.shareId, this.key, this.iv});
+
+  final String shareId;
+  final String? key;
+  final String? iv;
 }

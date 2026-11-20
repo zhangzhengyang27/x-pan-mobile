@@ -4,9 +4,11 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart' as file_picker;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_config.dart';
+import '../core/network/http_client.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/storage/token_storage.dart';
 import '../core/storage/upload_task_storage.dart';
@@ -30,6 +32,7 @@ import '../services/share_service.dart';
 import '../services/space_service.dart';
 import '../services/upload_service.dart';
 import '../services/vault_service.dart';
+import '../utils/e2ee_share.dart';
 import '../utils/file_open.dart';
 import '../utils/format.dart';
 import '../widgets/app_list_item.dart';
@@ -594,8 +597,47 @@ class _HomePageState extends ConsumerState<HomePage> {
         ? files.first.filename
         : '${files.first.filename} 等 ${files.length} 个文件';
 
+    // E2EE 只支持单文件（服务端仅存密文、密钥在链接 fragment），文件夹/多选走普通分享
+    var e2ee = false;
+    if (files.length == 1 && !files.first.isFolder) {
+      if (!mounted) return;
+      final mode = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(AppTokens.space16),
+                child: Text('选择分享方式', style: AppTokens.titleMedium),
+              ),
+              ListTile(
+                leading: const Icon(Icons.link),
+                title: const Text('普通分享'),
+                subtitle: const Text('服务端可读取文件，支持预览与转存'),
+                onTap: () => Navigator.pop(ctx, 'plain'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: const Text('加密分享（E2EE）'),
+                subtitle: const Text('先本地加密再上传，密钥只放在分享链接 # 后'),
+                onTap: () => Navigator.pop(ctx, 'e2ee'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (mode == null) return;
+      e2ee = mode == 'e2ee';
+    }
+
     final shareDayType = await _pickShareDayType();
     if (shareDayType == null) return;
+
+    if (e2ee) {
+      await _createE2eeShare(shareDayType);
+      return;
+    }
 
     try {
       await ShareService.instance.create(
@@ -611,6 +653,173 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
     } catch (e) {
       _toast(e.toString());
+    }
+  }
+
+  /// 创建 E2EE 分享：本地选原文件 → 逐块加密 → 上传密文 → 创建分享 → 返回带密钥链接
+  ///
+  /// Web 端同样的产品语义：选中的是本地原文件，而不是云端已有文件；
+  /// 服务端只保存密文副本（隐藏目录），密钥永远不出现在请求体/URL path 中。
+  Future<void> _createE2eeShare(int shareDayType) async {
+    final picked = await file_picker.FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: false,
+    );
+    final pickedFile = picked?.files.single;
+    final path = pickedFile?.path;
+    if (path == null || path.isEmpty) {
+      _toast('无法读取所选文件，请重试');
+      return;
+    }
+    final source = File(path);
+    final size = await source.length();
+    if (size <= 0) {
+      _toast('空文件不能加密分享');
+      return;
+    }
+    if (size > e2eeMaxPlaintextBytes) {
+      _toast('加密分享暂支持 20GB 以内文件');
+      return;
+    }
+
+    E2eeCipherResult? cipher;
+    String? uploadedCipherId;
+    try {
+      cipher = await _runWithProgress<E2eeCipherResult>(
+        title: '加密分享',
+        action: (progress, phase) async {
+          phase.value = '本地加密中…';
+          return encryptFileForShare(
+            source,
+            onProgress: (ratio) => progress.value = ratio * 0.5,
+          );
+        },
+      );
+      if (cipher == null) return;
+
+      final fileId = await _runWithProgress<String>(
+        title: '加密分享',
+        action: (progress, phase) async {
+          progress.value = 0.5;
+          phase.value = '上传密文中…';
+          return ShareService.instance.uploadCipher(
+            file: cipher!.file,
+            filename: cipher.filename,
+            onProgress: (ratio) => progress.value = 0.5 + ratio * 0.5,
+          );
+        },
+      );
+      if (fileId == null) return;
+      uploadedCipherId = fileId;
+
+      final share = await ShareService.instance.create(
+        shareName: pickedFile?.name ?? source.path.split(Platform.pathSeparator).last,
+        fileIds: [fileId],
+        shareType: 1,
+        shareDayType: shareDayType,
+        e2ee: true,
+      );
+      final shareUrl = buildE2eeShareUrl(share.shareUrl, cipher.key, cipher.iv);
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('加密分享创建成功'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('服务端只保存密文。请完整复制下面的链接（# 后的密钥不能丢失）：'),
+                const SizedBox(height: AppTokens.space12),
+                SelectableText(
+                  shareUrl,
+                  style: AppTokens.bodySmall.copyWith(
+                    color: AppTokens.textSecondary(
+                      Theme.of(ctx).brightness,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: shareUrl));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _toast('分享链接已复制');
+                },
+                child: const Text('复制链接'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('完成'),
+              ),
+            ],
+          ),
+        );
+      }
+    } on ApiException catch (e) {
+      // 业务失败说明分享没建成，可以安全清理刚上传的密文；网络异常不做清理，
+      // 因为请求可能已到达服务端（与 Web 端同一处理原则）。
+      if (uploadedCipherId != null) {
+        try {
+          await ShareService.instance.deleteCipher(uploadedCipherId);
+        } catch (_) {
+          // 清理失败只影响配额，不覆盖原始创建失败原因
+        }
+      }
+      _toast(e.toString());
+    } catch (e) {
+      _toast('加密分享失败：${e.toString()}');
+    } finally {
+      await cipher?.cleanup();
+    }
+  }
+
+  /// 带进度对话框执行耗时操作；action 内通过 progress/phase 更新 UI
+  Future<T?> _runWithProgress<T>({
+    required String title,
+    required Future<T> Function(
+      ValueNotifier<double> progress,
+      ValueNotifier<String> phase,
+    ) action,
+  }) async {
+    if (!mounted) return null;
+    final progress = ValueNotifier<double>(0);
+    final phase = ValueNotifier<String>('准备中…');
+    var dialogOpen = true;
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: ValueListenableBuilder<double>(
+          valueListenable: progress,
+          builder: (ctx, value, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ValueListenableBuilder<String>(
+                valueListenable: phase,
+                builder: (ctx, text, _) => Text(text),
+              ),
+              const SizedBox(height: 12),
+              LinearProgressIndicator(value: value),
+              const SizedBox(height: 8),
+              Text('${(value * 100).toStringAsFixed(0)}%'),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() => dialogOpen = false));
+    // 等路由真正入栈后再开始，避免极快失败时 pop 到调用方页面
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    try {
+      return await action(progress, phase);
+    } finally {
+      if (dialogOpen && mounted) Navigator.of(context).pop();
+      progress.dispose();
+      phase.dispose();
     }
   }
 
