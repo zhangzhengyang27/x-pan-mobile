@@ -9,18 +9,16 @@
 ## 1. 快速开始
 
 ```bash
-cd /Users/zhangzhengyang/Desktop/x-pan/x-pan-mobile
+cd /Users/zhangzhengyang/Desktop/publish/x-pan/x-pan-mobile
 
-flutter pub get          # 安装依赖
-flutter analyze          # 静态检查（改动后必跑）
-flutter test             # 运行测试（改动后必跑）
-flutter run              # 运行（默认 http://localhost:8081）
+flutter pub get                    # 安装依赖（首次或依赖变更时）
+flutter analyze --no-fatal-infos   # 静态检查（门禁口径；已知 info 见第 6 节）
+flutter test --no-pub              # 运行全量测试（当前 112 用例，约 20 秒）
+flutter run                        # 运行（默认 http://localhost:8081）
 ```
 
-**注意**：`flutter test` 全量运行可能超时，建议**按文件分组运行**：
-```bash
-flutter test test/models_test.dart test/utils_test.dart
-```
+**注意**：`flutter test` 默认会再次解析依赖，网络异常时会卡住；依赖已安装时必须加
+`--no-pub`。若仍卡住，清理 `build/test_cache` 后重跑。
 
 ---
 
@@ -28,7 +26,7 @@ flutter test test/models_test.dart test/utils_test.dart
 
 | 层 | 选型 |
 |----|------|
-| 框架 | Flutter 3.35 / Dart 3.9 |
+| 框架 | Flutter 3.47+ / Dart 3.13+（CI 3.47.1，本机 3.50.1） |
 | 状态管理 | Riverpod（`flutter_riverpod` 2.x，StateNotifier + Provider） |
 | 网络 | Dio 5.x（统一拦截器 + 认证续期） |
 | 本地存储 | `flutter_secure_storage`（Token / API Key，Keychain/Keystore 加密） |
@@ -132,6 +130,15 @@ class XxxService {
 
 新增/修改代码后**必须**跑相关测试，并尽可能补充测试。
 
+**当前基线**：21 个测试文件、**112** 个用例；`flutter test --no-pub` 输出
+`+112: All tests passed!`（本机 Flutter 3.50.1 实测约 13–18 秒）。本机 3.50.1 偶发在
+打印通过行后不退出，属 Flutter 工具链退出问题；看到该行后可手动结束。CI 使用
+Flutter 3.47.1/Linux，`timeout-minutes: 15` 兜底，首次流水线需确认正常退出。
+
+`flutter analyze --no-fatal-infos` 目前放行 68 条 `material.dart` 弃用提示与 1 条
+`use_build_context_synchronously` 提示；warning/error 仍会失败，后续迁移
+`material_ui` 时逐步清零，不要新增同类 info。
+
 | 测试文件 | 覆盖 |
 |---------|------|
 | `test/models_test.dart` | 模型 `fromJson` |
@@ -171,8 +178,9 @@ await tester.pumpWidget(
 
 | 问题 | 处理 |
 |------|------|
-| `flutter analyze` 报错 | 修复后重跑，保持 0 错误 |
-| `flutter test` 全量超时 | 按文件分组运行 |
+| `flutter analyze` 报错 | 先区分 warning/error 与 info；CI 只放行 info，warning/error 必须修复 |
+| `flutter test` 卡住/超时 | 先确认已 `flutter pub get`，再执行 `flutter test --no-pub`；仍卡住清理 `build/test_cache` |
+| `flutter test` 已打印通过但不退出 | 本机 3.50.1/macOS 的已知工具链退出问题；确认 `All tests passed!` 后手动结束，CI 以 3.47.1 与 15 分钟超时兜底 |
 | Android 构建 TLS 失败 | 检查阿里云镜像是否生效 |
 | 后端地址变化 | 用 `--dart-define=X_PAN_API_BASE_URL=...` 覆盖 |
 | 真机连不上后端 | 用局域网 IP，Android 模拟器用 `10.0.2.2` |
