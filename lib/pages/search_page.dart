@@ -28,6 +28,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   String _keyword = '';
   /// 是否同时搜索文件正文
   bool _searchContent = false;
+  /// 语义搜索：向量 + BM25 混合；后端未启用时自动降级，不影响结果可用性
+  bool _semantic = false;
 
   /// 会话内搜索历史（最新在前，最多 8 条）
   final List<String> _history = [];
@@ -56,13 +58,19 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _history.insert(0, kw);
     if (_history.length > 8) _history.removeLast();
     try {
-      final results = _searchContent
-          ? (await FileService.instance.fulltextSearch(
+      final results = _semantic
+          ? (await FileService.instance.semanticSearch(
               keyword: kw,
               pageSize: 50,
             ))
               .records
-          : await FileService.instance.search(keyword: kw);
+          : _searchContent
+              ? (await FileService.instance.fulltextSearch(
+                  keyword: kw,
+                  pageSize: 50,
+                ))
+                  .records
+              : await FileService.instance.search(keyword: kw);
       // 已发起更新的搜索：丢弃过期响应（loading 交由最新请求管理）
       if (seq != _searchSeq) return;
       if (!mounted) return;
@@ -163,7 +171,22 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                     label: const Text('搜索正文'),
                     selected: _searchContent,
                     onSelected: (value) {
-                      setState(() => _searchContent = value);
+                      setState(() {
+                        _searchContent = value;
+                        if (value) _semantic = false;
+                      });
+                      if (_searched) _search();
+                    },
+                  ),
+                  const SizedBox(width: AppTokens.space8),
+                  FilterChip(
+                    label: const Text('智能搜索'),
+                    selected: _semantic,
+                    onSelected: (value) {
+                      setState(() {
+                        _semantic = value;
+                        if (value) _searchContent = false;
+                      });
                       if (_searched) _search();
                     },
                   ),
@@ -226,7 +249,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       return EmptyState(
         icon: Icons.search,
         title: '输入关键词开始搜索',
-        subtitle: _searchContent ? '支持文件名、正文与标签搜索' : '支持按文件名模糊搜索',
+        subtitle: _semantic
+          ? '按语义相关性排序，后端未启用时自动降级全文检索'
+          : _searchContent
+              ? '支持文件名、正文与标签搜索'
+              : '支持按文件名模糊搜索',
       );
     }
     if (_results.isEmpty) {

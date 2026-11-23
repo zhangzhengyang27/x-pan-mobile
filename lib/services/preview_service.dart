@@ -53,4 +53,13 @@ class PreviewService {
       dataDecoder: (json) => PreviewTask.fromJson(json as Map<String, dynamic>),
     );
   }
+
+  /// 创建/获取 HLS 转码任务（手动触发，后端默认 360p + 720p）
+  Future<PreviewTask> hls(String fileId) {
+    return _http.request<PreviewTask>(
+      '/preview/hls/${Uri.encodeComponent(fileId)}',
+      method: 'POST',
+      dataDecoder: (json) => PreviewTask.fromJson(json as Map<String, dynamic>),
+    );
+  }
 }

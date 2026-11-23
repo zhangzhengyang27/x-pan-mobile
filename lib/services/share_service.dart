@@ -27,6 +27,14 @@ class ShareVO {
     required this.createTime,
     this.shareCode = '',
     this.shareEndTime,
+    this.reportHidden = false,
+    this.reportHiddenTime,
+    this.downloadCount = 0,
+    this.downloadLimit = 0,
+    this.visitCount = 0,
+    this.saveCount = 0,
+    this.forbidReshare = false,
+    this.collectEnabled = false,
     this.e2ee = false,
   });
 
@@ -39,6 +47,14 @@ class ShareVO {
   final int shareDayType;
   final String? shareEndTime;
   final String createTime;
+  final bool reportHidden;
+  final String? reportHiddenTime;
+  final int downloadCount;
+  final int downloadLimit;
+  final int visitCount;
+  final int saveCount;
+  final bool forbidReshare;
+  final bool collectEnabled;
   final bool e2ee;
 
   factory ShareVO.fromJson(Map<String, dynamic> json) {
@@ -52,6 +68,14 @@ class ShareVO {
       shareDayType: json['shareDayType'] as int? ?? 0,
       shareEndTime: json['shareEndTime'] as String?,
       createTime: json['createTime'] as String? ?? '',
+      reportHidden: (json['reportHidden'] as num?)?.toInt() == 1,
+      reportHiddenTime: json['reportHiddenTime'] as String?,
+      downloadCount: (json['downloadCount'] as num?)?.toInt() ?? 0,
+      downloadLimit: (json['downloadLimit'] as num?)?.toInt() ?? 0,
+      visitCount: (json['visitCount'] as num?)?.toInt() ?? 0,
+      saveCount: (json['saveCount'] as num?)?.toInt() ?? 0,
+      forbidReshare: (json['forbidReshare'] as num?)?.toInt() == 1,
+      collectEnabled: (json['collectEnabled'] as num?)?.toInt() == 1,
       e2ee: (json['e2ee'] as num?)?.toInt() == 1,
     );
   }
@@ -72,6 +96,43 @@ class ShareUserInfo {
   }
 }
 
+/// 分享申诉状态，对齐后端 ShareAppealVO
+class ShareAppeal {
+  const ShareAppeal({
+    required this.appealId,
+    required this.shareId,
+    required this.status,
+    this.reason = '',
+    this.adminNote = '',
+    this.createTime,
+    this.updateTime,
+  });
+
+  final String appealId;
+  final String shareId;
+  final int status;
+  final String reason;
+  final String adminNote;
+  final String? createTime;
+  final String? updateTime;
+
+  bool get pending => status == 0;
+  bool get approved => status == 1;
+  bool get rejected => status == 2;
+
+  factory ShareAppeal.fromJson(Map<String, dynamic> json) {
+    return ShareAppeal(
+      appealId: json['appealId'] as String? ?? '',
+      shareId: json['shareId'] as String? ?? '',
+      status: (json['status'] as num?)?.toInt() ?? 0,
+      reason: json['reason'] as String? ?? '',
+      adminNote: json['adminNote'] as String? ?? '',
+      createTime: json['createTime'] as String?,
+      updateTime: json['updateTime'] as String?,
+    );
+  }
+}
+
 /// 分享简单详情，对齐后端 ShareSimpleDetailVO
 class ShareSimpleDetail {
   const ShareSimpleDetail({
@@ -80,6 +141,12 @@ class ShareSimpleDetail {
     required this.shareUserInfo,
     this.hasShareCode = false,
     this.downloadLimit = 0,
+    this.downloadCount = 0,
+    this.visitCount = 0,
+    this.saveCount = 0,
+    this.forbidReshare = false,
+    this.collectEnabled = false,
+    this.e2ee = false,
   });
 
   final String shareId;
@@ -87,6 +154,12 @@ class ShareSimpleDetail {
   final ShareUserInfo shareUserInfo;
   final bool hasShareCode;
   final int downloadLimit;
+  final int downloadCount;
+  final int visitCount;
+  final int saveCount;
+  final bool forbidReshare;
+  final bool collectEnabled;
+  final bool e2ee;
 
   factory ShareSimpleDetail.fromJson(Map<String, dynamic> json) {
     return ShareSimpleDetail(
@@ -96,7 +169,13 @@ class ShareSimpleDetail {
         _castMap(json['shareUserInfoVO']),
       ),
       hasShareCode: json['hasShareCode'] as bool? ?? false,
-      downloadLimit: json['downloadLimit'] as int? ?? 0,
+      downloadLimit: (json['downloadLimit'] as num?)?.toInt() ?? 0,
+      downloadCount: (json['downloadCount'] as num?)?.toInt() ?? 0,
+      visitCount: (json['visitCount'] as num?)?.toInt() ?? 0,
+      saveCount: (json['saveCount'] as num?)?.toInt() ?? 0,
+      forbidReshare: (json['forbidReshare'] as num?)?.toInt() == 1,
+      collectEnabled: (json['collectEnabled'] as num?)?.toInt() == 1,
+      e2ee: (json['e2ee'] as num?)?.toInt() == 1,
     );
   }
 }
@@ -113,6 +192,10 @@ class ShareDetail {
     this.shareEndTime,
     this.downloadCount = 0,
     this.downloadLimit = 0,
+    this.visitCount = 0,
+    this.saveCount = 0,
+    this.forbidReshare = false,
+    this.collectEnabled = false,
     this.e2ee = false,
   });
 
@@ -125,6 +208,10 @@ class ShareDetail {
   final ShareUserInfo shareUserInfo;
   final int downloadCount;
   final int downloadLimit;
+  final int visitCount;
+  final int saveCount;
+  final bool forbidReshare;
+  final bool collectEnabled;
   final bool e2ee;
 
   factory ShareDetail.fromJson(Map<String, dynamic> json) {
@@ -144,8 +231,12 @@ class ShareDetail {
       shareUserInfo: ShareUserInfo.fromJson(
         _castMap(json['shareUserInfoVO']),
       ),
-      downloadCount: json['downloadCount'] as int? ?? 0,
-      downloadLimit: json['downloadLimit'] as int? ?? 0,
+      downloadCount: (json['downloadCount'] as num?)?.toInt() ?? 0,
+      downloadLimit: (json['downloadLimit'] as num?)?.toInt() ?? 0,
+      visitCount: (json['visitCount'] as num?)?.toInt() ?? 0,
+      saveCount: (json['saveCount'] as num?)?.toInt() ?? 0,
+      forbidReshare: (json['forbidReshare'] as num?)?.toInt() == 1,
+      collectEnabled: (json['collectEnabled'] as num?)?.toInt() == 1,
       e2ee: (json['e2ee'] as num?)?.toInt() == 1,
     );
   }
@@ -161,15 +252,18 @@ class ShareService {
 
   /// 创建分享
   ///
-  /// 后端 CreateShareUrlPO 字段：shareName / shareType / shareDayType / shareFileIds
-  /// shareDayType: 0=永久 1=7天 2=30天
+  /// 后端 CreateShareUrlPO 字段：shareName / shareType / shareDayType / shareFileIds。
+  /// 当前后端只定义 shareType=0（有提取码）这一种类型，调用方不要再传 1；
+  /// 不传 shareCode 时后端会自动生成 6 位随机码，创建响应返回明文供本次展示。
   Future<ShareVO> create({
     required String shareName,
     required List<String> fileIds,
-    int shareType = 1,
+    int shareType = 0,
     int shareDayType = 0,
     String? shareCode,
     int? downloadLimit,
+    bool forbidReshare = false,
+    bool collectEnabled = false,
     bool e2ee = false,
   }) {
     return _http.request<ShareVO>(
@@ -182,6 +276,8 @@ class ShareService {
         'shareFileIds': fileIds,
         if (shareCode != null && shareCode.isNotEmpty) 'shareCode': shareCode,
         if (downloadLimit != null) 'downloadLimit': downloadLimit,
+        if (forbidReshare) 'forbidReshare': true,
+        if (collectEnabled) 'collectEnabled': true,
         if (e2ee) 'e2ee': true,
       },
       dataDecoder: (json) => ShareVO.fromJson(json as Map<String, dynamic>),
@@ -370,6 +466,82 @@ class ShareService {
     final code = decoded['code'];
     if (code is! int) return null;
     return Map<String, dynamic>.from(decoded);
+  }
+
+  /// 举报公开分享（需登录，匿名分享页也可先登录再举报）
+  Future<void> report({required String shareId, required String reason}) {
+    return _http.request<dynamic>(
+      '/share/report',
+      method: 'POST',
+      data: {'shareId': shareId, 'reason': reason},
+    );
+  }
+
+  /// 属主申诉被举报隐藏的分享；管理员复核后才会恢复
+  Future<void> appeal({required String shareId, required String reason}) {
+    return _http.request<dynamic>(
+      '/share/appeal',
+      method: 'POST',
+      data: {'shareId': shareId, 'reason': reason},
+    );
+  }
+
+  /// 查询某条分享最新的申诉状态；没有申诉时后端返回 null
+  Future<ShareAppeal?> getAppeal(String shareId) {
+    return _http.request<ShareAppeal?>(
+      '/share/appeal',
+      query: {'shareId': shareId},
+      dataDecoder: (json) {
+        if (json == null) return null;
+        return ShareAppeal.fromJson(json as Map<String, dynamic>);
+      },
+    );
+  }
+
+  /// 修改已有分享的文件收集开关；仅单个文件夹分享可开启
+  Future<void> setCollect({
+    required String shareId,
+    required bool enabled,
+  }) {
+    return _http.request<dynamic>(
+      '/share/${Uri.encodeComponent(shareId)}/collect',
+      method: 'PUT',
+      query: {'enabled': enabled},
+    );
+  }
+
+  /// 文件收集上传：访问者向分享者开启收集的文件夹上传文件
+  ///
+  /// 服务端只从 Share-Token 中取 shareId，不接收请求体里的 shareId，避免 IDOR。
+  Future<void> collect({
+    required File file,
+    required String shareToken,
+    void Function(double progress)? onProgress,
+  }) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(file.path, filename: file.path.split(Platform.pathSeparator).last),
+    });
+    try {
+      final response = await _http.dio.post<dynamic>(
+        '/share/collect',
+        data: form,
+        options: Options(
+          contentType: 'multipart/form-data',
+          headers: {'Share-Token': shareToken},
+          sendTimeout: Duration.zero,
+          receiveTimeout: Duration.zero,
+        ),
+        onSendProgress: (sent, total) {
+          if (total > 0) onProgress?.call(sent / total);
+        },
+      );
+      _unwrap<dynamic>(response.data, (json) => json);
+    } on DioException catch (e) {
+      throw ApiException(
+        e.response?.statusCode ?? -1,
+        e.response?.statusCode == 413 ? '文件过大（文件收集单文件上限 2GB）' : '上传失败',
+      );
+    }
   }
 
   /// 保存分享文件到网盘（需登录 + Share-Token 头）

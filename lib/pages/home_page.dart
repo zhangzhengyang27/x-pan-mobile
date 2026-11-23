@@ -21,13 +21,16 @@ import '../providers/notification_provider.dart';
 import '../providers/upload_provider.dart';
 import '../services/ai_file_service.dart';
 import '../services/deep_link_service.dart';
+import '../services/direct_link_service.dart';
 import '../services/notification_api.dart';
 import 'notification_list_page.dart';
 import '../services/download_service.dart';
 import '../services/local_notification_service.dart';
+import '../services/archive_service.dart';
 import '../services/extract_service.dart';
 import '../services/favorite_service.dart';
 import '../services/llm_service.dart';
+import '../services/media_metadata_service.dart';
 import '../services/share_service.dart';
 import '../services/space_service.dart';
 import '../services/upload_service.dart';
@@ -589,6 +592,114 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  /// 分享高级选项：提取码、下载次数、禁止转载、文件收集。
+  ///
+  /// 后端只有 shareType=0（有提取码）一种类型；不填提取码时自动生成 6 位随机码。
+  Future<_ShareOptions?> _pickShareOptions({
+    required bool canCollect,
+    required bool e2ee,
+  }) async {
+    final codeCtrl = TextEditingController();
+    final limitCtrl = TextEditingController();
+    var forbidReshare = false;
+    var collectEnabled = false;
+    final result = await showDialog<_ShareOptions>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('分享选项'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: codeCtrl,
+                  maxLength: 8,
+                  decoration: const InputDecoration(
+                    labelText: '提取码（可选）',
+                    hintText: '4-8 位字母数字，留空自动生成',
+                  ),
+                ),
+                TextField(
+                  controller: limitCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '下载次数上限（可选）',
+                    hintText: '0 或留空表示不限',
+                  ),
+                ),
+                const SizedBox(height: AppTokens.space8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: forbidReshare,
+                  onChanged: (v) =>
+                      setLocal(() => forbidReshare = v ?? false),
+                  title: const Text('禁止转载'),
+                  subtitle: const Text('他人不可转存到自己的网盘'),
+                ),
+                if (canCollect && !e2ee)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: collectEnabled,
+                    onChanged: (v) =>
+                        setLocal(() => collectEnabled = v ?? false),
+                    title: const Text('开启文件收集'),
+                    subtitle: const Text('访问者可向这个文件夹上传文件'),
+                  ),
+                if (e2ee)
+                  const Padding(
+                    padding: EdgeInsets.only(top: AppTokens.space4),
+                    child: Text('加密分享只保存密文，不支持文件收集。'),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final code = codeCtrl.text.trim();
+                final limitText = limitCtrl.text.trim();
+                if (code.isNotEmpty &&
+                    !RegExp(r'^[a-zA-Z0-9]{4,8}$').hasMatch(code)) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('提取码需为 4-8 位字母数字')),
+                  );
+                  return;
+                }
+                final limit = limitText.isEmpty ? null : int.tryParse(limitText);
+                if (limitText.isNotEmpty &&
+                    (limit == null || limit < 0 || limit > 999)) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('下载次数需为 0-999 的整数')),
+                  );
+                  return;
+                }
+                Navigator.pop(
+                  ctx,
+                  _ShareOptions(
+                    shareCode: code.isEmpty ? null : code,
+                    downloadLimit: limit == 0 ? null : limit,
+                    forbidReshare: forbidReshare,
+                    collectEnabled: collectEnabled && canCollect && !e2ee,
+                  ),
+                );
+              },
+              child: const Text('继续'),
+            ),
+          ],
+        ),
+      ),
+    );
+    codeCtrl.dispose();
+    limitCtrl.dispose();
+    return result;
+  }
+
   /// 分享选中文件
   Future<void> _shareFiles(List<FileVO> files) async {
     final fileIds = files.map((f) => f.fileId).toList();
@@ -634,8 +745,15 @@ class _HomePageState extends ConsumerState<HomePage> {
     final shareDayType = await _pickShareDayType();
     if (shareDayType == null) return;
 
+    final canCollect = files.length == 1 && files.first.isFolder;
+    final options = await _pickShareOptions(
+      canCollect: canCollect,
+      e2ee: e2ee,
+    );
+    if (options == null) return;
+
     if (e2ee) {
-      await _createE2eeShare(shareDayType);
+      await _createE2eeShare(shareDayType, options: options);
       return;
     }
 
@@ -643,8 +761,12 @@ class _HomePageState extends ConsumerState<HomePage> {
       await ShareService.instance.create(
         shareName: shareName,
         fileIds: fileIds,
-        shareType: 1, // 公开分享
+        shareType: 0, // 后端当前只有“有提取码”这一种分享类型
         shareDayType: shareDayType,
+        shareCode: options.shareCode,
+        downloadLimit: options.downloadLimit,
+        forbidReshare: options.forbidReshare,
+        collectEnabled: options.collectEnabled,
       );
       _toast('分享成功');
       // 跳转分享页
@@ -660,7 +782,10 @@ class _HomePageState extends ConsumerState<HomePage> {
   ///
   /// Web 端同样的产品语义：选中的是本地原文件，而不是云端已有文件；
   /// 服务端只保存密文副本（隐藏目录），密钥永远不出现在请求体/URL path 中。
-  Future<void> _createE2eeShare(int shareDayType) async {
+  Future<void> _createE2eeShare(
+    int shareDayType, {
+    required _ShareOptions options,
+  }) async {
     final picked = await file_picker.FilePicker.platform.pickFiles(
       allowMultiple: false,
       withData: false,
@@ -715,8 +840,11 @@ class _HomePageState extends ConsumerState<HomePage> {
       final share = await ShareService.instance.create(
         shareName: pickedFile?.name ?? source.path.split(Platform.pathSeparator).last,
         fileIds: [fileId],
-        shareType: 1,
+        shareType: 0,
         shareDayType: shareDayType,
+        shareCode: options.shareCode,
+        downloadLimit: options.downloadLimit,
+        forbidReshare: options.forbidReshare,
         e2ee: true,
       );
       final shareUrl = buildE2eeShareUrl(share.shareUrl, cipher.key, cipher.iv);
@@ -899,6 +1027,18 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             if (!file.isFolder)
               ListTile(
+                leading: const Icon(Icons.link),
+                title: const Text('创建直链'),
+                onTap: () => Navigator.pop(ctx, 'direct-link'),
+              ),
+            if (!file.isFolder)
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('媒体信息'),
+                onTap: () => Navigator.pop(ctx, 'media-info'),
+              ),
+            if (!file.isFolder)
+              ListTile(
                 leading: const Icon(Icons.history),
                 title: const Text('版本历史'),
                 onTap: () => Navigator.pop(ctx, 'versions'),
@@ -935,6 +1075,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         await _aiSummarize(file);
       case 'ai-rename':
         await _aiRename(file);
+      case 'direct-link':
+        await _createDirectLink(file);
+      case 'media-info':
+        await _showMediaInfo(file);
       case 'versions':
         _openPage(VersionHistoryPage(fileId: file.fileId));
     }
@@ -1060,11 +1204,173 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  /// 在线解压
+  /// 图片 EXIF / 音频标签 / 视频 ffprobe；不支持的文件后端会返回业务错误
+  Future<void> _showMediaInfo(FileVO file) async {
+    try {
+      final meta = await MediaMetadataService.instance.get(file.fileId);
+      if (!mounted) return;
+      final rows = <MapEntry<String, String>>[
+        MapEntry('类型', meta.kind),
+        if (meta.width != null && meta.height != null) MapEntry('尺寸', '${meta.width} × ${meta.height}'),
+        if (meta.durationMs != null) MapEntry('时长', '${(meta.durationMs! / 1000).toStringAsFixed(1)} 秒'),
+        if (meta.title.isNotEmpty) MapEntry('标题', meta.title),
+        if (meta.artist.isNotEmpty) MapEntry('作者/艺术家', meta.artist),
+        if (meta.album.isNotEmpty) MapEntry('专辑', meta.album),
+        if (meta.genre.isNotEmpty) MapEntry('流派', meta.genre),
+        if (meta.capturedAt.isNotEmpty) MapEntry('拍摄/发行时间', meta.capturedAt),
+        if (meta.camera.isNotEmpty) MapEntry('设备', meta.camera),
+        if (meta.location.isNotEmpty) MapEntry('位置', meta.location),
+        ...meta.extra.entries.map((e) => MapEntry(e.key, e.value)),
+      ];
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('媒体信息'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: rows.length,
+              separatorBuilder: (_, __) => const Divider(height: 12),
+              itemBuilder: (ctx, i) => Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 96, child: Text(rows[i].key, style: AppTokens.labelSmall)),
+                  Expanded(child: Text(rows[i].value, style: AppTokens.bodySmall)),
+                ],
+              ),
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+        ),
+      );
+    } catch (e) {
+      _toast('暂无媒体信息：${e.toString()}');
+    }
+  }
+
+  /// 创建文件直链并复制 URL；token 只在创建时返回一次，复制的就是唯一入口
+  Future<void> _createDirectLink(FileVO file) async {
+    try {
+      final link = await DirectLinkService.instance.create(file.fileId);
+      await Clipboard.setData(ClipboardData(text: link.url));
+      _toast('直链已创建并复制');
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
+  /// 在线解压：先列出压缩包条目，允许只解压选中的文件/目录。
   Future<void> _extract(FileVO file) async {
+    List<ExtractEntry> entries;
+    try {
+      _toast('正在读取压缩包条目…');
+      entries = await ExtractService.instance.entries(file.fileId);
+    } catch (e) {
+      _toast('读取条目失败：${e.toString()}');
+      return;
+    }
+    if (entries.isEmpty) {
+      _toast('压缩包为空，无法解压');
+      return;
+    }
+
+    if (!mounted) return;
+    final selected = <String>{...entries.map((e) => e.path)};
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('选择要解压的内容'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 360,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '共 ${entries.length} 项，已选 ${selected.length} 项',
+                      style: AppTokens.bodySmall,
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => setLocal(() {
+                        selected
+                          ..clear()
+                          ..addAll(entries.map((e) => e.path));
+                      }),
+                      child: const Text('全选'),
+                    ),
+                    TextButton(
+                      onPressed: () => setLocal(selected.clear),
+                      child: const Text('清空'),
+                    ),
+                  ],
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: entries.length,
+                    itemBuilder: (ctx, i) {
+                      final entry = entries[i];
+                      final checked = selected.contains(entry.path);
+                      return CheckboxListTile(
+                        dense: true,
+                        value: checked,
+                        onChanged: (value) {
+                          setLocal(() {
+                            if (value == true) {
+                              selected.add(entry.path);
+                            } else {
+                              selected.remove(entry.path);
+                            }
+                          });
+                        },
+                        title: Text(
+                          entry.path,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTokens.bodySmall,
+                        ),
+                        subtitle: Text(
+                          entry.isDir ? '文件夹' : entry.sizeDesc,
+                          style: AppTokens.labelSmall,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: selected.isEmpty
+                  ? null
+                  : () => Navigator.pop(ctx, true),
+              child: const Text('开始解压'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+
+    // 全选等价于整包解压，不传 entries，避免把几百个路径塞进请求体。
+    final selectedEntries = selected.length == entries.length
+        ? null
+        : selected.toList();
     _toast('正在创建解压任务…');
     try {
-      final task = await ExtractService.instance.extract(file.fileId);
+      final task = await ExtractService.instance.extract(
+        file.fileId,
+        entries: selectedEntries,
+      );
       if (task.status == 2) {
         _toast('解压完成');
         if (!mounted) return;
@@ -1149,6 +1455,21 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (_selectedIds.isEmpty) return;
     await _shareFiles(_selectedFiles);
     _exitSelection();
+  }
+
+  /// 批量在线压缩：后端支持文件与文件夹；结果在任务中心查看。
+  Future<void> _batchArchive() async {
+    if (_selectedFiles.isEmpty) return;
+    try {
+      final task = await ArchiveService.instance.archive(
+        fileIds: _selectedFiles.map((f) => f.fileId).toList(),
+      );
+      if (!mounted) return;
+      _toast('已提交在线压缩，任务 ID：${task.taskId}');
+      _exitSelection();
+    } catch (e) {
+      _toast(e.toString());
+    }
   }
 
   void _exitSelection() {
@@ -1504,6 +1825,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         onMove: _batchMove,
         onCopy: _batchCopy,
         onShare: _batchShare,
+        onArchive: _batchArchive,
       );
     }
 
@@ -2039,4 +2361,19 @@ class _NotificationBellButton extends StatelessWidget {
       onPressed: onOpen,
     );
   }
+}
+
+/// 分享创建高级选项（普通分享与 E2EE 共用）
+class _ShareOptions {
+  const _ShareOptions({
+    this.shareCode,
+    this.downloadLimit,
+    this.forbidReshare = false,
+    this.collectEnabled = false,
+  });
+
+  final String? shareCode;
+  final int? downloadLimit;
+  final bool forbidReshare;
+  final bool collectEnabled;
 }

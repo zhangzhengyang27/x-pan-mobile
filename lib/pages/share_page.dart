@@ -84,6 +84,95 @@ class _SharePageState extends ConsumerState<SharePage> {
     _toast('分享链接已复制');
   }
 
+  /// 修改文件收集开关。后端会再校验“仅单个文件夹分享”，失败时直接提示。
+  Future<void> _toggleCollect(ShareVO share, bool enabled) async {
+    try {
+      await ShareService.instance.setCollect(
+        shareId: share.shareId,
+        enabled: enabled,
+      );
+      _toast(enabled ? '已开启文件收集' : '已关闭文件收集');
+      await _load();
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
+  /// 查看申诉状态并提交申诉；同一分享只允许一条待处理申诉。
+  Future<void> _appeal(ShareVO share) async {
+    ShareAppeal? appeal;
+    try {
+      appeal = await ShareService.instance.getAppeal(share.shareId);
+    } catch (e) {
+      _toast(e.toString());
+      return;
+    }
+    if (appeal != null && appeal.pending) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('申诉审核中'),
+          content: Text(
+            '申诉理由：${appeal!.reason}\n提交时间：${appeal.createTime ?? '—'}\n\n管理员复核后会通过通知告知结果。',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final ctrl = TextEditingController();
+    final String? reason;
+    try {
+      reason = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('申诉分享'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLength: 500,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: '申诉理由',
+              hintText: '说明分享内容合规、请求管理员复核',
+              alignLabelWithHint: true,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('提交申诉'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
+    }
+    if (reason == null || reason.isEmpty) return;
+    try {
+      await ShareService.instance.appeal(
+        shareId: share.shareId,
+        reason: reason,
+      );
+      _toast('申诉已提交，等待管理员复核');
+      await _load();
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -298,26 +387,34 @@ class _SharePageState extends ConsumerState<SharePage> {
                       ),
                     ),
                   ),
-                  // 状态标签
+                  // 状态标签：举报隐藏优先于普通有效期状态
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppTokens.space8,
                       vertical: AppTokens.space3,
                     ),
                     decoration: BoxDecoration(
-                      color: (expired
-                              ? AppTokens.neutral400
-                              : AppTokens.success)
+                      color: (share.reportHidden
+                              ? AppTokens.error
+                              : expired
+                                  ? AppTokens.neutral400
+                                  : AppTokens.success)
                           .withValues(alpha: 0.12),
                       borderRadius:
                           BorderRadius.circular(AppTokens.radiusFull),
                     ),
                     child: Text(
-                      expired ? '已过期' : '有效',
+                      share.reportHidden
+                          ? '待复核'
+                          : expired
+                              ? '已过期'
+                              : '有效',
                       style: AppTokens.labelSmall.copyWith(
-                        color: expired
-                            ? AppTokens.neutral400
-                            : AppTokens.success,
+                        color: share.reportHidden
+                            ? AppTokens.error
+                            : expired
+                                ? AppTokens.neutral400
+                                : AppTokens.success,
                       ),
                     ),
                   ),
@@ -332,7 +429,47 @@ class _SharePageState extends ConsumerState<SharePage> {
                   color: AppTokens.textSecondary(brightness),
                 ),
               ),
-              const SizedBox(height: AppTokens.space12),
+              const SizedBox(height: AppTokens.space4),
+              Text(
+                '访问 ${share.visitCount} · 保存 ${share.saveCount} · 下载 '
+                '${share.downloadCount}${share.downloadLimit > 0 ? '/${share.downloadLimit}' : ''}'
+                '${share.forbidReshare ? ' · 禁止转载' : ''}'
+                '${share.collectEnabled ? ' · 收集开启' : ''}',
+                style: AppTokens.bodySmall.copyWith(
+                  color: AppTokens.textSecondary(brightness),
+                ),
+              ),
+              const SizedBox(height: AppTokens.space8),
+              Row(
+                children: [
+                  if (!expired && !share.reportHidden && !share.e2ee)
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Text(
+                            '文件收集',
+                            style: AppTokens.bodySmall.copyWith(
+                              color: AppTokens.textSecondary(brightness),
+                            ),
+                          ),
+                          Switch(
+                            value: share.collectEnabled,
+                            onChanged: (value) => _toggleCollect(share, value),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  if (share.reportHidden)
+                    TextButton.icon(
+                      onPressed: () => _appeal(share),
+                      icon: const Icon(Icons.gavel_outlined, size: 16),
+                      label: const Text('申诉'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppTokens.space4),
               Row(
                 children: [
                   Expanded(

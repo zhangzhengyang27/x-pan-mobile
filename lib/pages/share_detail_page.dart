@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
@@ -181,6 +182,7 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
     }
     final file = files.first;
 
+    if (!mounted) return;
     final progress = ValueNotifier<double>(0);
     final phase = ValueNotifier<String>('准备下载密文…');
     var dialogOpen = true;
@@ -244,6 +246,108 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
     }
   }
 
+  /// 举报当前分享。后端要求登录账号，举报只记录待审核，不直接下架。
+  Future<void> _report() async {
+    final ctrl = TextEditingController();
+    final String? reason;
+    try {
+      reason = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('举报分享'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLength: 500,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: '举报理由',
+              hintText: '请说明该分享存在的问题',
+              alignLabelWithHint: true,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('提交'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
+    }
+    if (reason == null || reason.isEmpty) return;
+    try {
+      await ShareService.instance.report(
+        shareId: widget.shareId,
+        reason: reason,
+      );
+      _toast('举报已提交，平台会尽快核查');
+    } catch (e) {
+      _toast('举报失败：${e.toString()}');
+    }
+  }
+
+  /// 文件收集上传：访问者把本地文件上传到分享者开启收集的文件夹。
+  Future<void> _collect() async {
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: false,
+    );
+    final path = picked?.files.single.path;
+    if (path == null || path.isEmpty) {
+      _toast('无法读取所选文件，请重试');
+      return;
+    }
+    final file = File(path);
+    final size = await file.length();
+    if (size > 2 * 1024 * 1024 * 1024) {
+      _toast('文件收集单文件上限为 2GB');
+      return;
+    }
+    final progress = ValueNotifier<double>(0);
+    var dialogOpen = true;
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('上传到分享文件夹'),
+        content: ValueListenableBuilder<double>(
+          valueListenable: progress,
+          builder: (ctx, value, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LinearProgressIndicator(value: value),
+              const SizedBox(height: 8),
+              Text('${(value * 100).toStringAsFixed(0)}%'),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() => dialogOpen = false));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    try {
+      await ShareService.instance.collect(
+        file: file,
+        shareToken: _shareToken!,
+        onProgress: (ratio) => progress.value = ratio,
+      );
+      if (dialogOpen && mounted) Navigator.of(context).pop();
+      _toast('上传成功');
+    } catch (e) {
+      if (dialogOpen && mounted) Navigator.of(context).pop();
+      _toast('上传失败：${e.toString()}');
+    } finally {
+      progress.dispose();
+    }
+  }
+
   /// 保存选中文件到网盘
   Future<void> _save() async {
     final files = _detail!.files.where((f) => _selectedIds.contains(f.fileId)).toList();
@@ -289,11 +393,66 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('分享详情')),
+      appBar: AppBar(
+        title: const Text('分享详情'),
+        actions: [
+          if (_detail != null)
+            IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: '举报分享',
+              onPressed: _report,
+            ),
+        ],
+      ),
       body: ResponsiveContent(child: _buildBody()),
-      bottomNavigationBar: _detail != null
-          ? (_detail!.e2ee ? _buildE2eeBar() : _buildSaveBar())
-          : null,
+      bottomNavigationBar: _detail != null ? _buildBottomBar() : null,
+    );
+  }
+
+  /// 底部操作区：E2EE 只解密下载；普通分享按开关组合“上传收集/保存到网盘”。
+  Widget? _buildBottomBar() {
+    final detail = _detail!;
+    if (detail.e2ee) return _buildE2eeBar();
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (detail.forbidReshare)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppTokens.space8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.block, size: 16, color: AppTokens.error),
+                    const SizedBox(width: AppTokens.space8),
+                    Expanded(
+                      child: Text(
+                        '分享者已禁止转载，不能保存到我的网盘',
+                        style: AppTokens.bodySmall.copyWith(
+                          color: AppTokens.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (detail.collectEnabled)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppTokens.space8),
+                child: OutlinedButton.icon(
+                  onPressed: _collect,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: const Text('上传到分享文件夹'),
+                ),
+              ),
+            if (!detail.forbidReshare) _buildSaveBar(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -456,6 +615,40 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
             ],
           ),
         ),
+        if (detail.forbidReshare || detail.collectEnabled || detail.downloadLimit > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.space12,
+              AppTokens.space12,
+              AppTokens.space12,
+              AppTokens.space4,
+            ),
+            child: Wrap(
+              spacing: AppTokens.space8,
+              runSpacing: AppTokens.space4,
+              children: [
+                if (detail.forbidReshare)
+                  _buildInfoChip(
+                    icon: Icons.block,
+                    text: '禁止转载',
+                    color: AppTokens.error,
+                  ),
+                if (detail.collectEnabled)
+                  _buildInfoChip(
+                    icon: Icons.inbox_outlined,
+                    text: '可上传到分享文件夹',
+                    color: AppTokens.brandPrimary,
+                  ),
+                if (detail.downloadLimit > 0)
+                  _buildInfoChip(
+                    icon: Icons.download_outlined,
+                    text:
+                        '已下载 ${detail.downloadCount}/${detail.downloadLimit}',
+                    color: AppTokens.textSecondary(brightness),
+                  ),
+              ],
+            ),
+          ),
         // 文件列表（多选）
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -465,9 +658,13 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
             AppTokens.space4,
           ),
           child: Text(
-            '共 ${detail.files.length} 个文件，点击选择后保存',
+            detail.forbidReshare
+                ? '共 ${detail.files.length} 个文件，分享者已禁止转载'
+                : '共 ${detail.files.length} 个文件，点击选择后保存',
             style: AppTokens.bodySmall.copyWith(
-              color: AppTokens.textSecondary(brightness),
+              color: detail.forbidReshare
+                  ? AppTokens.error
+                  : AppTokens.textSecondary(brightness),
             ),
           ),
         ),
@@ -476,12 +673,38 @@ class _ShareDetailPageState extends ConsumerState<ShareDetailPage> {
     );
   }
 
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.space8,
+        vertical: AppTokens.space4,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(text, style: AppTokens.labelSmall.copyWith(color: color)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFileTile(FileVO file) {
     final brightness = Theme.of(context).brightness;
     final selected = _selectedIds.contains(file.fileId);
+    final selectable = _detail?.forbidReshare != true;
     return AppListItem(
       selected: selected,
-      onTap: () => _toggleSelect(file),
+      onTap: selectable ? () => _toggleSelect(file) : null,
       child: Row(
         children: [
           Icon(

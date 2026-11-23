@@ -94,6 +94,17 @@ class _OfflinePageState extends ConsumerState<OfflinePage> {
     }
   }
 
+  /// 失败任务重试：后端会按 .part/ETag 断点续传，不会从头下载
+  Future<void> _retry(OfflineTask task) async {
+    try {
+      await OfflineService.instance.retry(task.id);
+      _toast('已重新开始');
+      await _load();
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
   Future<void> _delete(OfflineTask task) async {
     try {
       await OfflineService.instance.delete(task.id);
@@ -224,6 +235,16 @@ class _OfflinePageState extends ConsumerState<OfflinePage> {
                   ),
                   tooltip: '取消',
                   onPressed: () => _cancel(task),
+                ),
+              if (task.status == 3)
+                IconButton(
+                  icon: const Icon(
+                    Icons.refresh,
+                    size: 20,
+                    color: AppTokens.brandPrimary,
+                  ),
+                  tooltip: '重试',
+                  onPressed: () => _retry(task),
                 ),
               IconButton(
                 icon: const Icon(

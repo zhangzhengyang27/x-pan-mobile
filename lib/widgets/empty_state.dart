@@ -4,7 +4,7 @@ import '../core/theme/app_tokens.dart';
 
 /// 高级感空状态组件
 ///
-/// 渐变图标背景 + 标题 + 副标题 + 可选操作按钮，替换裸图标+文字。
+/// 统一空状态：中性图标框 + 标题 + 副标题 + 可选操作按钮。
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -37,25 +37,22 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 渐变圆形图标背景
+            // 统一空态：低层级品牌底 + 中性 border，不再使用高饱和渐变
             Container(
-              width: 96,
-              height: 96,
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTokens.brandPrimary.withValues(alpha: 0.12),
-                    AppTokens.brandSecondary.withValues(alpha: 0.08),
-                  ],
+                color: AppTokens.brandPrimary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppTokens.radiusPanel),
+                border: Border.all(
+                  color: AppTokens.divider(brightness),
+                  width: 1,
                 ),
-                borderRadius: BorderRadius.circular(AppTokens.radiusXl),
               ),
               child: Icon(
                 icon,
-                size: 44,
-                color: AppTokens.brandPrimary,
+                size: 28,
+                color: AppTokens.brandAction,
               ),
             ),
             const SizedBox(height: AppTokens.space24),

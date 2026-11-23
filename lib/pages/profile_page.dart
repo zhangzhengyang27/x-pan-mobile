@@ -7,6 +7,8 @@ import '../providers/auth_provider.dart';
 import '../pages/ai_assistant_page.dart';
 import '../pages/dashboard_page.dart';
 import '../pages/device_page.dart';
+import '../pages/direct_link_page.dart';
+import '../pages/mount_page.dart';
 import '../pages/dedup_page.dart';
 import '../pages/favorite_page.dart';
 import '../pages/notification_page.dart';
@@ -15,6 +17,7 @@ import '../pages/recent_page.dart';
 import '../pages/recycle_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/share_page.dart';
+import '../pages/task_center_page.dart';
 import '../pages/vault_page.dart';
 
 /// 「我的」页（底部 Tab 的「我的」）
@@ -72,6 +75,11 @@ class ProfilePage extends ConsumerWidget {
                 onTap: () => _open(context, const DashboardPage()),
               ),
               _RowItem(
+                icon: Icons.task_alt,
+                label: '任务中心',
+                onTap: () => _open(context, const TaskCenterPage()),
+              ),
+              _RowItem(
                 icon: Icons.cloud_download_outlined,
                 label: '离线下载',
                 onTap: () => _open(context, const OfflinePage()),
@@ -80,6 +88,16 @@ class ProfilePage extends ConsumerWidget {
                 icon: Icons.content_copy_outlined,
                 label: '文件去重',
                 onTap: () => _open(context, const DedupPage()),
+              ),
+              _RowItem(
+                icon: Icons.link,
+                label: '文件直链',
+                onTap: () => _open(context, const DirectLinkPage()),
+              ),
+              _RowItem(
+                icon: Icons.cloud_queue,
+                label: '外部存储',
+                onTap: () => _open(context, const MountPage()),
               ),
             ],
           ),
@@ -150,11 +168,7 @@ class ProfilePage extends ConsumerWidget {
       padding: const EdgeInsets.all(AppTokens.space20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF2B7FFF), Color(0xFF0A5BE0)],
-        ),
+        gradient: AppTokens.brandGradient,
       ),
       child: Column(
         children: [
@@ -362,7 +376,7 @@ class _RowItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final color = danger ? Colors.red : AppTokens.textPrimary(brightness);
+    final color = danger ? AppTokens.error : AppTokens.textPrimary(brightness);
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -372,7 +386,7 @@ class _RowItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, color: danger ? Colors.red : AppTokens.brandPrimary),
+            Icon(icon, color: danger ? AppTokens.error : AppTokens.brandPrimary),
             const SizedBox(width: AppTokens.space12),
             Expanded(
               child: Text(

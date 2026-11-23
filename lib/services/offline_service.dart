@@ -140,6 +140,15 @@ class OfflineService {
     );
   }
 
+  /// 重试失败任务：后端按 .part/ETag 断点续传
+  Future<dynamic> retry(String taskId) {
+    return _http.request<dynamic>(
+      '/offline/retry',
+      method: 'POST',
+      query: {'taskId': taskId},
+    );
+  }
+
   /// 删除任务
   Future<dynamic> delete(String taskId) {
     return _http.request<dynamic>(

@@ -2,29 +2,33 @@ import 'package:flutter/material.dart';
 
 /// X-Pan Design Token 体系
 ///
-/// 科技动感风格（阿里云盘风）—— 深邃蓝主色 + 卡片化 + 数据可视化突出。
+/// 统一设计系统 —— X-Pan Blue + 中性表面阶梯 + 克制阴影。
 /// 所有视觉数值集中于此，页面与组件只引用 Token，禁止硬编码。
 class AppTokens {
   AppTokens._();
 
   // ─── 品牌色（深邃蓝 #3366FF）─────────────────────────────────
   static const Color brandPrimary = Color(0xFF3366FF);
-  static const Color brandPrimaryDark = Color(0xFF165DFF);
-  static const Color brandSecondary = Color(0xFF00D4C7); // 数据可视化辅色
-  static const Color brandAccent = Color(0xFF7C3AED); // 强调态辅色
+  static const Color brandPrimaryDark = Color(0xFF1A55F0);
+  static const Color brandAction = Color(0xFF245BFF); // 白字按钮/链接，AA 5.23:1
+  static const Color brandActionActive = Color(0xFF1B47C4); // 按下态
+  static const Color brandSecondary = Color(0xFF5B8FFF); // 数据可视化辅色，保持蓝色单色系
+  static const Color brandAccent = Color(0xFF84ABFF); // 强调态辅色
+  static const Color brandSoft = Color(0xFFEDF2FF); // 浅色品牌底
+  static const Color brandSky = Color(0xFF00A3FF); // 仅装饰/插画，不承托白字
 
   /// 品牌渐变（主按钮 / 品牌区头部）
   static const LinearGradient brandGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF3366FF), Color(0xFF165DFF)],
+    colors: [Color(0xFF3366FF), Color(0xFF245BFF)],
   );
 
-  /// 品牌渐变（数据可视化，蓝→青）
+  /// 品牌渐变（数据可视化，深浅两级蓝）
   static const LinearGradient dataGradient = LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [Color(0xFF3366FF), Color(0xFF00D4C7)],
+    colors: [Color(0xFF3366FF), Color(0xFF5B8FFF)],
   );
 
   /// 品牌色阶 50-900
@@ -35,10 +39,10 @@ class AppTokens {
     300: Color(0xFF84ABFF),
     400: Color(0xFF5B8FFF),
     500: Color(0xFF3366FF), // 主色
-    600: Color(0xFF1A55F0),
-    700: Color(0xFF165DFF),
-    800: Color(0xFF0F47CC),
-    900: Color(0xFF0A3299),
+    600: Color(0xFF245BFF), // 交互填充
+    700: Color(0xFF1A55F0),
+    800: Color(0xFF15399E),
+    900: Color(0xFF102C78),
   };
 
   // ─── 语义色 ────────────────────────────────────────────────────
@@ -47,33 +51,46 @@ class AppTokens {
   static const Color error = Color(0xFFEF4444);
   static const Color info = Color(0xFF3366FF);
 
+  /// 状态前景对：浅底小字/深色填充，避免白字或亮色小字不可读
+  static const Color successText = Color(0xFF067647);
+  static const Color warningText = Color(0xFFB54708);
+  static const Color dangerText = Color(0xFFB42318);
+  static const Color successTextDark = Color(0xFF6CE9A6);
+  static const Color warningTextDark = Color(0xFFFEC84B);
+  static const Color dangerTextDark = Color(0xFFFDA29B);
+
   // ─── 中性色阶（浅色）──────────────────────────────────────────
   static const Color neutral0 = Color(0xFFFFFFFF);
-  static const Color neutral50 = Color(0xFFF7F9FC);
-  static const Color neutral100 = Color(0xFFF1F4F9);
-  static const Color neutral200 = Color(0xFFE4E9F2);
-  static const Color neutral300 = Color(0xFFCBD3E0);
-  static const Color neutral400 = Color(0xFF94A0B8);
-  static const Color neutral500 = Color(0xFF64748B);
-  static const Color neutral600 = Color(0xFF475569);
-  static const Color neutral700 = Color(0xFF334155);
-  static const Color neutral800 = Color(0xFF1E293B);
-  static const Color neutral900 = Color(0xFF0F172A);
+  static const Color neutral50 = Color(0xFFF7F8F8);
+  static const Color neutral100 = Color(0xFFF3F4F5);
+  static const Color neutral150 = Color(0xFFE9EAEC); // 表头/三级表面
+  static const Color neutral200 = Color(0xFFE4E6E8);
+  static const Color neutral300 = Color(0xFFD0D6E0);
+  static const Color neutral400 = Color(0xFFB4B8BE);
+  static const Color neutral500 = Color(0xFF8A8F98);
+  static const Color neutral600 = Color(0xFF4B5058);
+  static const Color neutral700 = Color(0xFF34373B);
+  static const Color neutral800 = Color(0xFF232528);
+  static const Color neutral900 = Color(0xFF1D1D1F);
 
   // ─── 中性色阶（暗色）──────────────────────────────────────────
-  static const Color darkBg = Color(0xFF0B0E14); // 最底层
-  static const Color darkSurface = Color(0xFF131722); // 卡片
-  static const Color darkSurfaceElevated = Color(0xFF1B2030); // 弹层
-  static const Color darkBorder = Color(0xFF252B3B);
-  static const Color darkTextPrimary = Color(0xFFF1F5F9);
-  static const Color darkTextSecondary = Color(0xFF94A3B8);
+  static const Color darkBg = Color(0xFF08090A); // 最底层
+  static const Color darkSurface = Color(0xFF0F1011); // 卡片
+  static const Color darkSurfaceElevated = Color(0xFF191A1B); // 弹层
+  static const Color darkSurface3 = Color(0xFF28282C); // 高层容器
+  static const Color darkBorder = Color(0xFF2A2B2E);
+  static const Color darkBorderStrong = Color(0xFF34343A);
+  static const Color darkTextPrimary = Color(0xFFF7F8F8);
+  static const Color darkTextSecondary = Color(0xFFD0D6E0);
+  static const Color darkTextMuted = Color(0xFF8A8F98);
+  static const Color darkTextDisabled = Color(0xFF62666D);
 
   // ─── 字体梯度 ──────────────────────────────────────────────────
   static const String fontFamily = 'SF Pro Display'; // iOS 系统字体，Android 回退 Roboto
 
   static const TextStyle displayLarge = TextStyle(
     fontSize: 40,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.2,
     letterSpacing: -0.5,
   );
@@ -144,69 +161,70 @@ class AppTokens {
   static const double space40 = 40;
   static const double space48 = 48;
 
-  // ─── 圆角 ──────────────────────────────────────────────────────
+  // ─── 圆角：形状层级与 Web/Desktop 对齐，移动端整体 +2px 适配触控 ───
   static const double radiusSm = 8;
   static const double radiusMd = 12;
   static const double radiusLg = 16;
   static const double radiusXl = 20;
   static const double radiusFull = 999;
+  static const double radiusControl = 8;
+  static const double radiusCard = 12;
+  static const double radiusPanel = 16;
+  static const double radiusSheet = 16;
 
-  // ─── 阴影（多层柔和阴影，营造立体感）──────────────────────────
+  // ─── 阴影：低层级、低透明度；不依赖品牌光晕建立层级 ───────────────
   static List<BoxShadow> shadowSm(Brightness brightness) => [
         BoxShadow(
-          color: (brightness == Brightness.dark
-                  ? Colors.black
-                  : const Color(0xFF1E293B))
-              .withValues(alpha: 0.04),
-          blurRadius: 4,
+          color: Colors.black.withValues(
+            alpha: brightness == Brightness.dark ? 0.28 : 0.03,
+          ),
+          blurRadius: 2,
           offset: const Offset(0, 1),
         ),
       ];
 
   static List<BoxShadow> shadowMd(Brightness brightness) => [
         BoxShadow(
-          color: (brightness == Brightness.dark
-                  ? Colors.black
-                  : const Color(0xFF1E293B))
-              .withValues(alpha: brightness == Brightness.dark ? 0.3 : 0.06),
+          color: Colors.black.withValues(
+            alpha: brightness == Brightness.dark ? 0.32 : 0.04,
+          ),
           blurRadius: 12,
           offset: const Offset(0, 4),
         ),
         BoxShadow(
-          color: (brightness == Brightness.dark
-                  ? Colors.black
-                  : const Color(0xFF1E293B))
-              .withValues(alpha: brightness == Brightness.dark ? 0.2 : 0.03),
-          blurRadius: 4,
+          color: Colors.black.withValues(
+            alpha: brightness == Brightness.dark ? 0.16 : 0.02,
+          ),
+          blurRadius: 3,
           offset: const Offset(0, 1),
         ),
       ];
 
   static List<BoxShadow> shadowLg(Brightness brightness) => [
         BoxShadow(
-          color: (brightness == Brightness.dark
-                  ? Colors.black
-                  : const Color(0xFF1E293B))
-              .withValues(alpha: brightness == Brightness.dark ? 0.4 : 0.08),
+          color: Colors.black.withValues(
+            alpha: brightness == Brightness.dark ? 0.38 : 0.06,
+          ),
           blurRadius: 24,
           offset: const Offset(0, 8),
         ),
         BoxShadow(
-          color: (brightness == Brightness.dark
-                  ? Colors.black
-                  : const Color(0xFF1E293B))
-              .withValues(alpha: brightness == Brightness.dark ? 0.25 : 0.04),
+          color: Colors.black.withValues(
+            alpha: brightness == Brightness.dark ? 0.20 : 0.03,
+          ),
           blurRadius: 8,
           offset: const Offset(0, 2),
         ),
       ];
 
-  /// 品牌色阴影（用于主按钮 / FAB，带品牌色光晕）
+  /// 品牌色阴影：仅用于主按钮/FAB 的轻提示，不再做大面积光晕
   static List<BoxShadow> shadowBrand(Brightness brightness) => [
         BoxShadow(
-          color: brandPrimary.withValues(alpha: brightness == Brightness.dark ? 0.4 : 0.3),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
+          color: brandAction.withValues(
+            alpha: brightness == Brightness.dark ? 0.20 : 0.12,
+          ),
+          blurRadius: 10,
+          offset: const Offset(0, 2),
         ),
       ];
 
@@ -256,8 +274,12 @@ class AppTokens {
       b == Brightness.dark ? darkTextSecondary : neutral500;
   static Color textTertiary(Brightness b) =>
       b == Brightness.dark ? darkTextSecondary.withValues(alpha: 0.6) : neutral400;
+  static Color textDisabled(Brightness b) =>
+      b == Brightness.dark ? const Color(0xFF62666D) : neutral400;
   static Color divider(Brightness b) =>
       b == Brightness.dark ? darkBorder : neutral200;
   static Color outline(Brightness b) =>
       b == Brightness.dark ? darkBorder : neutral300;
+  static Color action(Brightness b) =>
+      b == Brightness.dark ? brandSecondary : brandAction;
 }
