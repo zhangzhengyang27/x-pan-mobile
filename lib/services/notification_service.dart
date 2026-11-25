@@ -92,6 +92,16 @@ class NotificationService {
 
   static final NotificationService instance = NotificationService._();
 
+  /// 心跳周期：默认 25s（略小于服务端 30s ping，避免同一时刻双向发送）。
+  /// 可通过 `--dart-define=XPAN_WS_HEARTBEAT_SECONDS=30` 编译期覆盖；
+  /// 必须小于服务端/代理的空闲超时，否则会在服务端断开前先发 PING。
+  static const int heartbeatSeconds =
+      int.fromEnvironment('XPAN_WS_HEARTBEAT_SECONDS', defaultValue: 25);
+
+  /// 半开阈值固定为两个心跳周期：一个周期用于发 PING，另一个周期等 PONG/服务端 ping。
+  /// 不单独配置，避免两个值配错后出现“刚发 PING 就判死”的抖动。
+  static const Duration staleAfter = Duration(seconds: heartbeatSeconds * 2);
+
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   Timer? _heartbeatTimer;
@@ -223,7 +233,7 @@ class NotificationService {
   void _startHeartbeat() {
     _lastServerActivity = DateTime.now();
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: heartbeatSeconds), (_) {
       // 半开连接检测：两个心跳周期内没有任何服务端消息（含 PONG/ping），
       // 本地 TCP 仍在但对端已失联——主动关闭触发重连，而不是继续空转
       if (isStale(_lastServerActivity, DateTime.now())) {
@@ -248,11 +258,11 @@ class NotificationService {
     return Duration(milliseconds: (1000 * (1 << attempts)).clamp(1000, 30000));
   }
 
-  /// 半开连接判定：超过两个心跳周期（心跳 25s × 2 = 50s）未收到服务端任何消息。
+  /// 半开连接判定：超过两个心跳周期未收到服务端任何消息。
   /// 旧实现只发 PING 不校验回包——半开连接下 _connected 恒为 true，消息通道悄悄失效。
   static bool isStale(DateTime? lastServerActivity, DateTime now) {
     if (lastServerActivity == null) return false;
-    return now.difference(lastServerActivity) > const Duration(seconds: 50);
+    return now.difference(lastServerActivity) > staleAfter;
   }
 
   void _scheduleReconnect() {

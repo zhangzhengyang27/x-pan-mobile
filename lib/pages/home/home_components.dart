@@ -160,6 +160,7 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onMove,
     required this.onCopy,
     required this.onShare,
+    required this.onArchive,
   });
 
   final int selectedCount;
@@ -168,6 +169,7 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onMove;
   final VoidCallback onCopy;
   final VoidCallback onShare;
+  final VoidCallback onArchive;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -201,6 +203,11 @@ class SelectionAppBar extends StatelessWidget implements PreferredSizeWidget {
           icon: const Icon(Icons.share_outlined),
           tooltip: '批量分享',
           onPressed: onShare,
+        ),
+        IconButton(
+          icon: const Icon(Icons.archive_outlined),
+          tooltip: '在线压缩',
+          onPressed: onArchive,
         ),
       ],
     );

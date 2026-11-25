@@ -80,7 +80,11 @@ void callbackDispatcher() {
     if (task != kPhotoBackupTask) return true;
     try {
       final engine = buildBackgroundEngine();
-      final result = await engine.scanAndEnqueue(force: true);
+      final result = await engine.scanAndEnqueue(
+        force: true,
+        // 后台 isolate 串行 await 上传，单次不宜过长（WorkManager 有执行窗口）
+        maxEnqueue: kBackgroundEnqueueLimit,
+      );
       if (result.enqueued > 0) {
         await notifyBackupDone(result.enqueued);
       }

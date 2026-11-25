@@ -58,6 +58,15 @@ void main() {
     expect(ids.contains('doomed'), isFalse);
   });
 
+  test('clear 清空全部待续传记录', () async {
+    await UploadTaskStorage.save(record('old-a'));
+    await UploadTaskStorage.save(record('old-b'));
+
+    await UploadTaskStorage.clear();
+
+    expect(await UploadTaskStorage.getAll(), isEmpty);
+  });
+
   test('同 identifier 并发 save 幂等去重', () async {
     await Future.wait([
       UploadTaskStorage.save(record('dup', name: 'v1.txt')),

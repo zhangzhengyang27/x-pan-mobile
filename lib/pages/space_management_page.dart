@@ -9,6 +9,7 @@ import '../models/space_member.dart';
 import '../providers/auth_provider.dart';
 import '../services/deep_link_service.dart';
 import '../services/space_service.dart';
+import 'space_acl_page.dart';
 import '../widgets/empty_state.dart';
 
 /// 团队空间管理（列表 + 成员 + 邀请）
@@ -479,6 +480,14 @@ class _SpaceDetailPageState extends ConsumerState<_SpaceDetailPage> {
               icon: const Icon(Icons.link),
               tooltip: '生成邀请链接',
               onPressed: _createInvite,
+            ),
+          if (_canManage)
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              tooltip: '目录权限',
+              onPressed: () => Navigator.of(context).push(
+                AppTokens.route(SpaceAclPage(space: _space)),
+              ),
             ),
           if (_isOwner)
             PopupMenuButton<String>(

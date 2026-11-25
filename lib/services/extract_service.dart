@@ -66,6 +66,33 @@ class ExtractTask {
   }
 }
 
+/// 压缩包内条目（选择解压用）
+class ExtractEntry {
+  const ExtractEntry({
+    required this.path,
+    required this.name,
+    required this.size,
+    required this.sizeDesc,
+    required this.isDir,
+  });
+
+  final String path;
+  final String name;
+  final int size;
+  final String sizeDesc;
+  final bool isDir;
+
+  factory ExtractEntry.fromJson(Map<String, dynamic> json) {
+    return ExtractEntry(
+      path: json['path'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      size: (json['size'] as num?)?.toInt() ?? 0,
+      sizeDesc: json['sizeDesc'] as String? ?? '',
+      isDir: json['isDir'] as bool? ?? false,
+    );
+  }
+}
+
 /// 在线解压 API，对齐后端 ExtractController
 class ExtractService {
   ExtractService._();
@@ -75,14 +102,42 @@ class ExtractService {
   final HttpClient _http = HttpClient.instance;
 
   /// 创建在线解压任务
-  Future<ExtractTask> extract(String fileId, {String? targetParentId}) {
+  ///
+  /// [entries] 为空表示整包解压；选择部分条目时只解压选中路径。
+  Future<ExtractTask> extract(
+    String fileId, {
+    String? targetParentId,
+    List<String>? entries,
+  }) {
     return _http.request<ExtractTask>(
       '/file/extract',
       method: 'POST',
       data: {
         'fileId': fileId,
         if (targetParentId != null) 'targetParentId': targetParentId,
+        if (entries != null && entries.isNotEmpty) 'entries': entries,
       },
+      dataDecoder: (json) => ExtractTask.fromJson(json as Map<String, dynamic>),
+    );
+  }
+
+  /// 列出压缩包内条目；只把 path 原样回传给解压接口，不暴露真实文件 ID
+  Future<List<ExtractEntry>> entries(String fileId) {
+    return _http.request<List<ExtractEntry>>(
+      '/file/extract/entries',
+      query: {'fileId': fileId},
+      dataDecoder: (json) => (json as List<dynamic>)
+          .map((e) => ExtractEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  /// 重试失败的解压任务；后端按检查点跳过已完成条目
+  Future<ExtractTask> retry(String taskId) {
+    return _http.request<ExtractTask>(
+      '/file/extract/retry',
+      method: 'POST',
+      query: {'taskId': taskId},
       dataDecoder: (json) => ExtractTask.fromJson(json as Map<String, dynamic>),
     );
   }

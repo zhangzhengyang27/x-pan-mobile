@@ -43,29 +43,40 @@ abstract class BackupAsset {
 
 abstract class PhotoAssetSource {
   Future<bool> ensurePermission();
-  Future<List<BackupAsset>> recentAssets();
+
+  /// 分页读取资产，避免硬编码 1 万张上限，也避免一次把所有缩略信息读进内存。
+  Future<List<BackupAsset>> assetPage({required int offset, required int limit});
 }
 
 /// photo_manager 实现
 class PhotoManagerAssetSource implements PhotoAssetSource {
+  AssetPathEntity? _allPath;
+
   @override
   Future<bool> ensurePermission() async {
     final state = await PhotoManager.requestPermissionExtend();
     return state.isAuth;
   }
 
-  @override
-  Future<List<BackupAsset>> recentAssets() async {
+  Future<AssetPathEntity?> _resolveAllPath() async {
+    if (_allPath != null) return _allPath;
     final paths = await PhotoManager.getAssetPathList(
       type: RequestType.common,
       filterOption: FilterOptionGroup(
         orders: [const OrderOption(type: OrderOptionType.updateDate, asc: false)],
       ),
     );
-    if (paths.isEmpty) return [];
+    if (paths.isEmpty) return null;
     // M3：聚合相册假设加固——优先取 isAll=true 的聚合项，兜底取首项
-    final recent = paths.where((p) => p.isAll).firstOrNull ?? paths.first;
-    final assets = await recent.getAssetListRange(start: 0, end: 10000);
+    _allPath = paths.where((p) => p.isAll).firstOrNull ?? paths.first;
+    return _allPath;
+  }
+
+  @override
+  Future<List<BackupAsset>> assetPage({required int offset, required int limit}) async {
+    final path = await _resolveAllPath();
+    if (path == null) return [];
+    final assets = await path.getAssetListRange(start: offset, end: offset + limit);
     return assets.map(_toBackupAsset).whereType<BackupAsset>().toList();
   }
 

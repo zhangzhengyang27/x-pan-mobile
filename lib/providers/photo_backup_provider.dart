@@ -160,7 +160,7 @@ class PhotoBackupRunNotifier extends StateNotifier<PhotoBackupRunState> {
     if (state.scanning) return;
     final engine = _buildEngine();
     try {
-      final result = await engine.scanAndEnqueue(); // force=false → 遵守节流
+      final result = await engine.scanAndEnqueue(maxEnqueue: 100); // 启动增量，避免一次占满临时盘
       if (result.needsPermission) {
         state = state.copyWith(lastNeedsPermission: true);
       }
@@ -189,7 +189,7 @@ class PhotoBackupRunNotifier extends StateNotifier<PhotoBackupRunState> {
     state = state.copyWith(scanning: true, lastMessage: '');
     try {
       final engine = _buildEngine();
-      final result = await engine.scanAndEnqueue(force: true);
+      final result = await engine.scanAndEnqueue(force: true, maxEnqueue: 200);
       if (result.needsPermission) {
         state = state.copyWith(
           lastNeedsPermission: true,

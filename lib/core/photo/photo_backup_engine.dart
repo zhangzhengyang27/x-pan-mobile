@@ -28,7 +28,9 @@ typedef UploadEnqueuer = Future<void> Function(
 /// 解析相对目录（如 "相册备份/2026-11"）为该目录的 parentId（幂等创建）
 typedef DirectoryResolver = Future<String> Function(String relativeDir);
 
-const int kBatchSize = 20;
+const int kAssetPageSize = 500;
+const int kDefaultEnqueueLimit = 200;
+const int kBackgroundEnqueueLimit = 50;
 const String kMutexKey = 'photo_backup_running';
 const Duration kMutexTimeout = Duration(minutes: 30);
 const Duration kThrottleInterval = Duration(minutes: 10);
@@ -60,8 +62,12 @@ class PhotoBackupEngine {
 
   /// 扫描 → 过滤 → 分类 → 分批入队。
   /// [force] = 手动"立即备份"或后台周期触发，绕过 10 分钟节流。
+  /// [maxEnqueue] = 本次最多入队数量，避免一次复制过多原图占满本地临时盘。
   /// 前后台并发互斥：SP 标记（30 分钟超时兜底），被占用直接跳过本次。
-  Future<BackupScanResult> scanAndEnqueue({bool force = false}) async {
+  Future<BackupScanResult> scanAndEnqueue({
+    bool force = false,
+    int maxEnqueue = kDefaultEnqueueLimit,
+  }) async {
     final sp = await SharedPreferences.getInstance();
     // 跨 isolate 可见性：shared_preferences 有进程内缓存，后台 isolate 写入的
     // 标记/记录前台缓存看不到——扫描入口强制 reload 后再读
@@ -84,7 +90,7 @@ class PhotoBackupEngine {
           return const BackupScanResult(scanned: 0, enqueued: 0, skipped: 0);
         }
       }
-      final result = await _scanAndEnqueueInner(sp);
+      final result = await _scanAndEnqueueInner(sp, maxEnqueue);
       await recordStore.endBatch();
       await sp.setInt(kLastScanKey, DateTime.now().millisecondsSinceEpoch);
       return result;
@@ -93,7 +99,8 @@ class PhotoBackupEngine {
     }
   }
 
-  Future<BackupScanResult> _scanAndEnqueueInner(SharedPreferences sp) async {
+  Future<BackupScanResult> _scanAndEnqueueInner(
+      SharedPreferences sp, int maxEnqueue) async {
     // C1：先加载持久化记录（markBackedUp 只在自己实例触发 load，
     // 新实例/新 isolate 的判定若不 load 会读到空缓存 → 每轮重复入队首个资产）
     await recordStore.load();
@@ -103,53 +110,60 @@ class PhotoBackupEngine {
     }
     await cleanupTemp();
 
-    // M2：photo_manager getAssetListRange 上限 10000——超过时最老资产不被扫描
-    //（后续可改为按相册分页遍历；当前个人项目场景 1 万张图片罕见）
-    final assets = await assetSource.recentAssets();
-    final dirIdCache = <String, String>{};
+    // 分页遍历相册（不再硬编码 1 万张上限）；受 maxEnqueue 限制，
+    // 未处理完的资产留待下次扫描，避免一次复制过多原图。
+    int scanned = 0;
     int enqueued = 0;
     int skipped = 0;
+    int offset = 0;
+    final dirIdCache = <String, String>{};
 
-    for (final asset in assets) {
-      if (enqueued >= kBatchSize) {
-        // 分批：超出首批的部分留待下次扫描（避免一次性堵满上传队列）
-        skipped += 1;
-        continue;
-      }
-      final classification = BackupClassifier.classify(
-        isVideo: asset.isVideo,
-        isScreenshot: asset.isScreenshot,
-        modifiedTime: asset.modifiedTime,
-        takenTime: asset.takenTime,
-      );
-      final mtimeMillis = asset.modifiedTime.millisecondsSinceEpoch;
+    while (enqueued < maxEnqueue) {
+      final assets = await assetSource.assetPage(offset: offset, limit: kAssetPageSize);
+      if (assets.isEmpty) break;
+      scanned += assets.length;
 
-      // 落临时文件后取真实 size 判定三元组（落盘失败跳过，本次不计）
-      final file = await asset.toFile();
-      if (file == null) {
-        skipped += 1;
-        continue;
-      }
-      final size = await file.length();
-      if (recordStore.isBackedUp(asset.assetId, mtimeMillis, size)) {
-        skipped += 1;
-        continue;
+      for (final asset in assets) {
+        if (enqueued >= maxEnqueue) break;
+        final classification = BackupClassifier.classify(
+          isVideo: asset.isVideo,
+          isScreenshot: asset.isScreenshot,
+          modifiedTime: asset.modifiedTime,
+          takenTime: asset.takenTime,
+        );
+        final mtimeMillis = asset.modifiedTime.millisecondsSinceEpoch;
+
+        // 落临时文件后取真实 size 判定三元组（落盘失败跳过，本次不计）
+        final file = await asset.toFile();
+        if (file == null) {
+          skipped += 1;
+          continue;
+        }
+        final size = await file.length();
+        if (recordStore.isBackedUp(asset.assetId, mtimeMillis, size)) {
+          skipped += 1;
+          continue;
+        }
+
+        String parentId = dirIdCache[classification.relativeDir] ?? '';
+        if (parentId.isEmpty) {
+          parentId = await dirResolver(classification.relativeDir);
+          dirIdCache[classification.relativeDir] = parentId;
+        }
+        // markBackedUp 不在此处调用（I2）：入队 ≠ 上传成功——前台 addFile 立即返回，
+        // 失败任务的资产必须留待下次扫描重试。"上传成功才记"由 enqueuer 实现方
+        // 在任务终态（后台 await uploadFile 成功 / 前台 onTaskSettled）时执行
+        await enqueuer(file, parentId, asset);
+        enqueued += 1;
+        await Future<void>.delayed(Duration.zero);
       }
 
-      String parentId = dirIdCache[classification.relativeDir] ?? '';
-      if (parentId.isEmpty) {
-        parentId = await dirResolver(classification.relativeDir);
-        dirIdCache[classification.relativeDir] = parentId;
-      }
-      // markBackedUp 不在此处调用（I2）：入队 ≠ 上传成功——前台 addFile 立即返回，
-      // 失败任务的资产必须留待下次扫描重试。"上传成功才记"由 enqueuer 实现方
-      // 在任务终态（后台 await uploadFile 成功 / 前台 onTaskSettled）时执行
-      await enqueuer(file, parentId, asset);
-      enqueued += 1;
-      await Future<void>.delayed(Duration.zero);
+      offset += assets.length;
+      if (assets.length < kAssetPageSize) break;
     }
 
-    return BackupScanResult(scanned: assets.length, enqueued: enqueued, skipped: skipped);
+    return BackupScanResult(
+        scanned: scanned, enqueued: enqueued, skipped: skipped);
   }
 
   /// 清理临时目录中超过 24h 的残留副本（含按资产隔离的子目录）；每次扫描前顺带执行

@@ -342,6 +342,38 @@ class FileService {
     );
   }
 
+  /// 语义搜索：向量 kNN + BM25 混合（RRF），后端不可用时自动降级全文检索
+  Future<PageVO<FileVO>> semanticSearch({
+    required String keyword,
+    String? fileTypes,
+    String? extensions,
+    String? dateFrom,
+    String? dateTo,
+    num? sizeMin,
+    num? sizeMax,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) {
+    return _http.request<PageVO<FileVO>>(
+      '/search/semantic',
+      query: {
+        'keyword': keyword,
+        if (fileTypes != null) 'fileTypes': fileTypes,
+        if (extensions != null) 'extensions': extensions,
+        if (dateFrom != null) 'dateFrom': dateFrom,
+        if (dateTo != null) 'dateTo': dateTo,
+        if (sizeMin != null) 'sizeMin': sizeMin,
+        if (sizeMax != null) 'sizeMax': sizeMax,
+        'pageNum': pageNum,
+        'pageSize': pageSize,
+      },
+      dataDecoder: (json) => PageVO<FileVO>.fromJson(
+        json as Map<String, dynamic>,
+        (item) => FileVO.fromJson(item as Map<String, dynamic>),
+      ),
+    );
+  }
+
   /// 面包屑
   Future<List<BreadcrumbItem>> getBreadcrumbs(String fileId) {
     return _http.request<List<BreadcrumbItem>>(

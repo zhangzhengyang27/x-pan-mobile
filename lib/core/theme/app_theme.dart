@@ -5,7 +5,7 @@ import 'app_tokens.dart';
 
 /// 全局主题
 ///
-/// 科技动感风格 —— 深邃蓝品牌色 #3366FF，卡片化 + 多层阴影 + 精细动效。
+/// 统一设计系统 —— X-Pan Blue + 语义表面 + 克制阴影；平台差异仅保留触控尺寸。
 /// 所有视觉数值来自 [AppTokens]，禁止在此硬编码颜色/间距/圆角。
 class AppTheme {
   AppTheme._();
@@ -61,9 +61,9 @@ class AppTheme {
         color: AppTokens.surface(brightness),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shadowColor: const Color(0xFF1E293B).withValues(alpha: 0.08),
+        shadowColor: AppTokens.neutral900.withValues(alpha: 0.08),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
         ),
         margin: EdgeInsets.zero,
       ),
@@ -81,25 +81,25 @@ class AppTheme {
           color: AppTokens.textSecondary(brightness),
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           borderSide: BorderSide(
             color: AppTokens.divider(brightness),
             width: 1,
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           borderSide: const BorderSide(
             color: AppTokens.brandPrimary,
             width: 1.5,
           ),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           borderSide: const BorderSide(color: AppTokens.error, width: 1),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -113,11 +113,11 @@ class AppTheme {
         style: FilledButton.styleFrom(
           // 仅约束高度、不撑满宽度（保证弹窗内取消/确定按钮可并排展示）
           minimumSize: const Size(0, 48),
-          backgroundColor: AppTokens.brandPrimary,
+          backgroundColor: AppTokens.brandAction,
           foregroundColor: Colors.white,
           textStyle: AppTokens.labelLarge,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           ),
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: AppTokens.space24),
@@ -129,26 +129,26 @@ class AppTheme {
           foregroundColor: AppTokens.textPrimary(brightness),
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           ),
           side: BorderSide(color: AppTokens.divider(brightness)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppTokens.brandPrimary,
+          foregroundColor: AppTokens.brandAction,
           textStyle: AppTokens.labelLarge,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppTokens.brandPrimary,
-          side: const BorderSide(color: AppTokens.brandPrimary),
+          foregroundColor: AppTokens.brandAction,
+          side: const BorderSide(color: AppTokens.brandAction),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           ),
         ),
       ),
@@ -160,7 +160,7 @@ class AppTheme {
         elevation: 4,
         highlightElevation: 8,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
         ),
       ),
 
@@ -180,7 +180,7 @@ class AppTheme {
           vertical: AppTokens.space4,
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
         ),
       ),
 
@@ -197,7 +197,7 @@ class AppTheme {
         backgroundColor: isDark ? AppTokens.darkSurfaceElevated : AppTokens.neutral900,
         contentTextStyle: AppTokens.bodyMedium.copyWith(color: Colors.white),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
         ),
         elevation: 4,
       ),
@@ -210,7 +210,7 @@ class AppTheme {
         modalElevation: 8,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
-            top: Radius.circular(AppTokens.radiusXl),
+            top: Radius.circular(AppTokens.radiusSheet),
           ),
         ),
       ),
@@ -221,7 +221,7 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          borderRadius: BorderRadius.circular(AppTokens.radiusPanel),
         ),
         titleTextStyle: AppTokens.titleLarge.copyWith(
           color: AppTokens.textPrimary(brightness),
@@ -242,7 +242,7 @@ class AppTheme {
         backgroundColor: isDark
             ? AppTokens.darkSurfaceElevated
             : AppTokens.neutral100,
-        selectedColor: AppTokens.brandPrimary.withValues(alpha: 0.12),
+        selectedColor: AppTokens.brandAction.withValues(alpha: 0.12),
         labelStyle: AppTokens.labelSmall.copyWith(
           color: AppTokens.textSecondary(brightness),
         ),

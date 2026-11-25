@@ -1,0 +1,38 @@
+# 设计 token 契约门禁（Mobile 本仓）
+#
+# 与 Desktop 一样，契约/脚本从公开的 x-pan-fronted 单一源拉取；
+# Flutter 端的圆角与触控尺寸差异由契约里的 flutter 段显式表达，不靠口头约定。
+name: Design Token Contract
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  mobile:
+    name: Mobile token contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CONTRACT_REPO: zhangzhengyang27/x-pan-fronted
+      CONTRACT_REF: main
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Fetch canonical contract and checker
+        run: |
+          mkdir -p .ci
+          curl -fsSL "https://raw.githubusercontent.com/${CONTRACT_REPO}/${CONTRACT_REF}/docs/design-tokens.json" -o .ci/design-tokens.json
+          curl -fsSL "https://raw.githubusercontent.com/${CONTRACT_REPO}/${CONTRACT_REF}/scripts/check-design-tokens.mjs" -o .ci/check-design-tokens.mjs
+      - name: Check Mobile design tokens
+        run: node .ci/check-design-tokens.mjs --contract=.ci/design-tokens.json --platform=flutter --root=.

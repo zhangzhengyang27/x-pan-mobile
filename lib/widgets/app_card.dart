@@ -4,7 +4,7 @@ import '../core/theme/app_tokens.dart';
 
 /// 高级感卡片组件
 ///
-/// 多层柔和阴影 + 圆角 + 可选渐变边框，用于替换裸 `Card`。
+/// 低层级阴影 + 语义圆角；不再用品牌光晕/重阴影制造层级。
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -14,7 +14,7 @@ class AppCard extends StatelessWidget {
     this.onTap,
     this.gradient,
     this.elevation = CardElevation.medium,
-    this.borderRadius = AppTokens.radiusLg,
+    this.borderRadius = AppTokens.radiusCard,
   });
 
   final Widget child;

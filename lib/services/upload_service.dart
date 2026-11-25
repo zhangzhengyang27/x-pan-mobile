@@ -53,7 +53,7 @@ class UploadService {
 
     // 大小校验
     if (totalSize > AppConfig.maxFileSize) {
-      throw ApiException(-1, '文件大小超过最大限制（3GB）');
+      throw ApiException(-1, '文件大小超过最大限制（20GB）');
     }
 
     // 计算文件 MD5 作为 identifier（恢复场景跳过）
